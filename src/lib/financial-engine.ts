@@ -33,7 +33,7 @@ export function calculateMetrics(data: FinancialData): FinancialMetrics {
   };
 }
 
-function getConcentration(assets: Record<string, number>, total: number): number {
+function getConcentration(assets: object, total: number): number {
   if (total === 0) return 1;
   const values = Object.values(assets);
   const hhi = values.reduce((sum, v) => sum + Math.pow(v / total, 2), 0);
