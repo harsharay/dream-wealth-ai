@@ -8,9 +8,9 @@ interface ScenarioSimulatorProps {
 
 export function ScenarioSimulator({ data }: ScenarioSimulatorProps) {
   const [params, setParams] = useState<ScenarioParams>({
-    additionalInvestment: 5000,
-    expenseReduction: 3000,
-    loanPrepayment: 100000,
+    additionalInvestment: 0,
+    expenseReduction: 0,
+    loanPrepayment: 0,
   });
 
   const { current, projected } = simulateScenario(data, params);
@@ -19,18 +19,18 @@ export function ScenarioSimulator({ data }: ScenarioSimulatorProps) {
     setParams(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
   };
 
-  const inputClass = "neu-input w-full text-sm text-foreground bg-background";
-  const labelClass = "text-xs font-semibold uppercase tracking-wider text-muted-foreground";
+  const inputClass = "nb-input w-full text-sm";
+  const labelClass = "text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block";
 
   const comparison = (label: string, currentVal: number, projectedVal: number, format: (v: number) => string) => {
     const improved = projectedVal > currentVal;
     return (
-      <div className="flex justify-between items-center py-2">
-        <span className="text-sm text-muted-foreground">{label}</span>
-        <div className="flex items-center gap-3 text-sm">
-          <span className="text-foreground">{format(currentVal)}</span>
-          <span className="text-muted-foreground">→</span>
-          <span className={improved ? "text-success font-semibold" : "text-danger font-semibold"}>
+      <div className="flex justify-between items-center py-3 border-b-2 border-foreground/10 last:border-0">
+        <span className="text-sm text-foreground font-bold">{label}</span>
+        <div className="flex items-center gap-3 text-sm font-mono">
+          <span className="text-muted-foreground">{format(currentVal)}</span>
+          <span className="text-foreground font-bold">→</span>
+          <span className={`font-bold ${improved ? "text-success" : "text-danger"}`}>
             {format(projectedVal)}
           </span>
         </div>
@@ -39,9 +39,9 @@ export function ScenarioSimulator({ data }: ScenarioSimulatorProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="neu-card">
-        <h3 className="font-display font-semibold text-foreground mb-4">Scenario Parameters</h3>
+    <div className="space-y-6">
+      <div className="nb-card">
+        <h3 className="font-sans font-bold text-foreground mb-4 text-lg">🔬 Scenario Parameters</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className={labelClass}>Extra Monthly Investment</label>
@@ -50,6 +50,7 @@ export function ScenarioSimulator({ data }: ScenarioSimulatorProps) {
               className={inputClass}
               value={params.additionalInvestment || ""}
               onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("additionalInvestment", e.target.value)}
+              placeholder="₹ 0"
             />
           </div>
           <div>
@@ -59,6 +60,7 @@ export function ScenarioSimulator({ data }: ScenarioSimulatorProps) {
               className={inputClass}
               value={params.expenseReduction || ""}
               onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("expenseReduction", e.target.value)}
+              placeholder="₹ 0"
             />
           </div>
           <div>
@@ -68,23 +70,24 @@ export function ScenarioSimulator({ data }: ScenarioSimulatorProps) {
               className={inputClass}
               value={params.loanPrepayment || ""}
               onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("loanPrepayment", e.target.value)}
+              placeholder="₹ 0"
             />
           </div>
         </div>
       </div>
 
-      <div className="neu-card">
-        <h3 className="font-display font-semibold text-foreground mb-4">Projected Impact (12 months)</h3>
-        <div className="divide-y divide-border">
+      <div className="nb-card-accent">
+        <h3 className="font-sans font-bold text-foreground mb-4 text-lg">📊 Projected Impact (12 months)</h3>
+        <div>
           {comparison("Net Worth", current.netWorth, projected.netWorth, formatCurrency)}
           {comparison("Savings Rate", current.savingsRate, projected.savingsRate, (v) => `${v.toFixed(1)}%`)}
           {comparison("Debt-to-Income", current.debtToIncomeRatio, projected.debtToIncomeRatio, (v) => `${v.toFixed(1)}%`)}
-          <div className="flex justify-between items-center py-2">
-            <span className="text-sm text-muted-foreground">Health Score</span>
-            <div className="flex items-center gap-3 text-sm">
-              <span className={`font-semibold ${getScoreColor(current.healthScore)}`}>{current.healthScore}</span>
-              <span className="text-muted-foreground">→</span>
-              <span className={`font-semibold ${getScoreColor(projected.healthScore)}`}>{projected.healthScore}</span>
+          <div className="flex justify-between items-center py-3">
+            <span className="text-sm text-foreground font-bold">Health Score</span>
+            <div className="flex items-center gap-3 text-sm font-mono">
+              <span className={`font-bold ${getScoreColor(current.healthScore)}`}>{current.healthScore}</span>
+              <span className="text-foreground font-bold">→</span>
+              <span className={`font-bold ${getScoreColor(projected.healthScore)}`}>{projected.healthScore}</span>
             </div>
           </div>
         </div>

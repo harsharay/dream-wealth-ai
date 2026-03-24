@@ -26,8 +26,8 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
     onSave(form);
   };
 
-  const inputClass = "neu-input w-full text-sm text-foreground bg-background";
-  const labelClass = "text-xs font-semibold uppercase tracking-wider text-muted-foreground";
+  const inputClass = "nb-input w-full text-sm";
+  const labelClass = "text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block";
 
   const renderField = (label: string, section: string, field: string, val: number) => (
     <div key={field}>
@@ -37,7 +37,7 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
         className={inputClass}
         value={val || ""}
         onChange={(e: ChangeEvent<HTMLInputElement>) => updateField(section, field, e.target.value)}
-        placeholder="0"
+        placeholder="₹ 0"
       />
     </div>
   );
@@ -45,14 +45,14 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Income */}
-      <div className="neu-card">
-        <h3 className="font-display font-semibold text-foreground mb-4">Monthly Income</h3>
+      <div className="nb-card">
+        <h3 className="font-sans font-bold text-foreground mb-4 text-lg">💰 Monthly Income</h3>
         {renderField("Total Monthly Income", "root", "monthlyIncome", form.monthlyIncome)}
       </div>
 
       {/* Expenses */}
-      <div className="neu-card">
-        <h3 className="font-display font-semibold text-foreground mb-4">Monthly Expenses</h3>
+      <div className="nb-card">
+        <h3 className="font-sans font-bold text-foreground mb-4 text-lg">🧾 Monthly Expenses</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {Object.entries(form.expenses).map(([key, val]) =>
             renderField(key.replace(/([A-Z])/g, " $1").trim(), "expenses", key, val)
@@ -61,8 +61,8 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
       </div>
 
       {/* Assets */}
-      <div className="neu-card">
-        <h3 className="font-display font-semibold text-foreground mb-4">Assets</h3>
+      <div className="nb-card">
+        <h3 className="font-sans font-bold text-foreground mb-4 text-lg">📈 Assets</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {Object.entries(form.assets).map(([key, val]) =>
             renderField(key.replace(/([A-Z])/g, " $1").trim(), "assets", key, val)
@@ -71,8 +71,8 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
       </div>
 
       {/* Liabilities */}
-      <div className="neu-card">
-        <h3 className="font-display font-semibold text-foreground mb-4">Liabilities</h3>
+      <div className="nb-card">
+        <h3 className="font-sans font-bold text-foreground mb-4 text-lg">💳 Liabilities</h3>
         <div className="grid grid-cols-2 gap-4">
           {Object.entries(form.liabilities).map(([key, val]) =>
             renderField(key.replace(/([A-Z])/g, " $1").trim(), "liabilities", key, val)
@@ -81,19 +81,20 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
       </div>
 
       {/* Risk Appetite */}
-      <div className="neu-card">
-        <h3 className="font-display font-semibold text-foreground mb-4">Risk Appetite</h3>
+      <div className="nb-card">
+        <h3 className="font-sans font-bold text-foreground mb-4 text-lg">🎯 Risk Appetite</h3>
         <div className="flex gap-3">
           {(["low", "medium", "high"] as RiskAppetite[]).map((level) => (
             <button
               key={level}
               type="button"
               onClick={() => setForm(prev => ({ ...prev, riskAppetite: level }))}
-              className={`neu-button flex-1 capitalize text-sm ${
+              className={`flex-1 capitalize text-sm font-bold py-3 px-4 rounded-lg border-2 border-foreground transition-all ${
                 form.riskAppetite === level
                   ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground"
+                  : "bg-card text-muted-foreground hover:text-foreground"
               }`}
+              style={{ boxShadow: form.riskAppetite === level ? "2px 2px 0px 0px hsl(var(--foreground))" : "3px 3px 0px 0px hsl(var(--foreground))" }}
             >
               {level}
             </button>
@@ -101,8 +102,8 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
         </div>
       </div>
 
-      <button type="submit" className="neu-button-primary w-full text-sm">
-        Save & Analyze
+      <button type="submit" className="nb-button-primary w-full text-base py-4">
+        Show My Financial Insights →
       </button>
     </form>
   );

@@ -1,5 +1,5 @@
 import type { FinancialMetrics, FinancialData } from "@/types/finance";
-import { Sparkles, Lock } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 interface AIInsightsPanelProps {
   metrics: FinancialMetrics;
@@ -10,43 +10,34 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
   const insights = generateInsights(metrics, data);
 
   return (
-    <div className="neu-card">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-display font-semibold text-foreground flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-primary" />
+    <div className="nb-card">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="w-8 h-8 rounded-lg bg-secondary border-2 border-foreground flex items-center justify-center"
+             style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}>
+          <Sparkles className="w-4 h-4 text-foreground" />
+        </div>
+        <h3 className="font-sans font-bold text-foreground text-lg">
           AI Financial Diagnosis
         </h3>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         {insights.map((section, i) => (
-          <div key={i}>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              {section.title}
+          <div key={i} className={`rounded-lg p-4 border-2 border-foreground ${section.bgColor}`}
+               style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3">
+              {section.emoji} {section.title}
             </h4>
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               {section.items.map((item, j) => (
-                <li key={j} className="text-sm text-foreground flex gap-2">
-                  <span className={`mt-0.5 shrink-0 ${section.color}`}>•</span>
+                <li key={j} className="text-sm text-foreground flex gap-2 font-medium">
+                  <span className="shrink-0">{section.bullet}</span>
                   {item}
                 </li>
               ))}
             </ul>
           </div>
         ))}
-      </div>
-
-      <div className="mt-6 p-4 rounded-xl premium-glow bg-premium/5 border border-premium/20">
-        <div className="flex items-center gap-2 mb-2">
-          <Lock className="w-4 h-4 text-premium" />
-          <span className="text-sm font-semibold text-premium">Premium Insights</span>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Unlock personalized investment strategies, tax optimization tips, and monthly progress reports with WealthPilot Premium.
-        </p>
-        <button className="mt-3 neu-button bg-premium text-premium-foreground text-xs px-4 py-2">
-          Upgrade to Premium
-        </button>
       </div>
     </div>
   );
@@ -55,7 +46,6 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
 function generateInsights(metrics: FinancialMetrics, data: FinancialData) {
   const sections = [];
 
-  // Diagnosis
   const diagnosis: string[] = [];
   if (metrics.healthScore >= 70) {
     diagnosis.push("Your financial health is solid. You're in the top bracket — but there's always room to optimize.");
@@ -65,17 +55,15 @@ function generateInsights(metrics: FinancialMetrics, data: FinancialData) {
     diagnosis.push("Your financial health is in critical condition. Every month you delay action costs you real money.");
   }
   diagnosis.push(`Net worth of ${new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(metrics.netWorth)} with ${metrics.savingsRate.toFixed(0)}% savings rate.`);
-  sections.push({ title: "Diagnosis", items: diagnosis, color: "text-primary" });
+  sections.push({ title: "Diagnosis", items: diagnosis, emoji: "🩺", bullet: "→", bgColor: "bg-accent/20" });
 
-  // Risks
   const risks: string[] = [];
   if (metrics.liquidityRatio < 1) risks.push("Insufficient emergency fund — you're one job loss away from financial crisis.");
   if (data.liabilities.creditCardDebt > 0) risks.push("Active credit card debt is silently draining your wealth at 36%+ APR.");
   if (metrics.debtToIncomeRatio > 40) risks.push("Dangerously high leverage. You're over-exposed to interest rate risk.");
   if (risks.length === 0) risks.push("No critical risks detected. Stay disciplined.");
-  sections.push({ title: "Key Risks", items: risks, color: "text-danger" });
+  sections.push({ title: "Key Risks", items: risks, emoji: "⚠️", bullet: "✕", bgColor: "bg-danger/10" });
 
-  // Opportunities
   const opps: string[] = [];
   if (data.assets.mutualFunds === 0 && data.assets.stocks === 0) {
     opps.push("You have zero market exposure. Start a SIP in a Nifty 50 index fund today.");
@@ -87,9 +75,8 @@ function generateInsights(metrics: FinancialMetrics, data: FinancialData) {
     opps.push("Your risk appetite is high but most money sits in the bank. Reallocate to equities.");
   }
   if (opps.length === 0) opps.push("Your allocation looks balanced. Focus on growing each bucket.");
-  sections.push({ title: "Missed Opportunities", items: opps, color: "text-warning" });
+  sections.push({ title: "Missed Opportunities", items: opps, emoji: "💡", bullet: "★", bgColor: "bg-secondary/30" });
 
-  // Action plan
   const actions: string[] = [];
   if (data.liabilities.creditCardDebt > 0) actions.push("IMMEDIATE: Pay off credit card debt. This is priority #1.");
   if (metrics.liquidityRatio < 1) actions.push("Build emergency fund to cover 6 months of expenses.");
@@ -97,7 +84,7 @@ function generateInsights(metrics: FinancialMetrics, data: FinancialData) {
   if (data.assets.mutualFunds > 0 || data.assets.stocks > 0) {
     actions.push("Review portfolio quarterly. Rebalance if any single asset exceeds 40% allocation.");
   }
-  sections.push({ title: "Action Plan", items: actions, color: "text-success" });
+  sections.push({ title: "Action Plan", items: actions, emoji: "🎯", bullet: "→", bgColor: "bg-accent/10" });
 
   return sections;
 }

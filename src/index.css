@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,60 +6,54 @@
 
 @layer base {
   :root {
-    --background: 220 20% 91%;
-    --foreground: 220 30% 15%;
+    --background: 60 9% 98%;
+    --foreground: 0 0% 9%;
 
-    --card: 220 20% 93%;
-    --card-foreground: 220 30% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
 
-    --popover: 220 20% 93%;
-    --popover-foreground: 220 30% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
 
-    --primary: 168 60% 40%;
+    --primary: 258 90% 66%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 15% 85%;
-    --secondary-foreground: 220 30% 20%;
+    --secondary: 45 93% 58%;
+    --secondary-foreground: 0 0% 9%;
 
-    --muted: 220 15% 87%;
-    --muted-foreground: 220 10% 50%;
+    --muted: 60 5% 92%;
+    --muted-foreground: 0 0% 40%;
 
-    --accent: 35 90% 55%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 158 64% 52%;
+    --accent-foreground: 0 0% 9%;
 
-    --destructive: 0 70% 55%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 15% 85%;
-    --input: 220 15% 85%;
-    --ring: 168 60% 40%;
+    --border: 0 0% 9%;
+    --input: 0 0% 9%;
+    --ring: 258 90% 66%;
 
-    --radius: 1rem;
-
-    /* Neumorphic shadows */
-    --neu-shadow-light: -6px -6px 14px rgba(255, 255, 255, 0.7);
-    --neu-shadow-dark: 6px 6px 14px rgba(163, 177, 198, 0.5);
-    --neu-shadow-inset-light: inset -3px -3px 7px rgba(255, 255, 255, 0.7);
-    --neu-shadow-inset-dark: inset 3px 3px 7px rgba(163, 177, 198, 0.5);
+    --radius: 0.5rem;
 
     /* Custom tokens */
-    --success: 145 60% 42%;
+    --success: 158 64% 42%;
     --success-foreground: 0 0% 100%;
-    --warning: 35 90% 55%;
-    --warning-foreground: 0 0% 100%;
-    --danger: 0 70% 55%;
+    --warning: 45 93% 58%;
+    --warning-foreground: 0 0% 9%;
+    --danger: 0 84% 60%;
     --danger-foreground: 0 0% 100%;
-    --premium: 270 60% 55%;
+    --premium: 258 90% 66%;
     --premium-foreground: 0 0% 100%;
 
-    --sidebar-background: 220 20% 91%;
-    --sidebar-foreground: 220 30% 15%;
-    --sidebar-primary: 168 60% 40%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-primary: 258 90% 66%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 15% 85%;
-    --sidebar-accent-foreground: 220 30% 15%;
-    --sidebar-border: 220 15% 85%;
-    --sidebar-ring: 168 60% 40%;
+    --sidebar-accent: 60 5% 92%;
+    --sidebar-accent-foreground: 0 0% 9%;
+    --sidebar-border: 0 0% 9%;
+    --sidebar-ring: 258 90% 66%;
   }
 }
 
@@ -74,54 +68,71 @@
 }
 
 @layer components {
-  .neu-flat {
-    box-shadow: var(--neu-shadow-light), var(--neu-shadow-dark);
+  /* Neobrutalism card */
+  .nb-card {
+    @apply rounded-lg p-6 bg-card border-2 border-foreground;
+    box-shadow: 4px 4px 0px 0px hsl(var(--foreground));
   }
 
-  .neu-pressed {
-    box-shadow: var(--neu-shadow-inset-light), var(--neu-shadow-inset-dark);
+  .nb-card-accent {
+    @apply rounded-lg p-6 border-2 border-foreground;
+    box-shadow: 4px 4px 0px 0px hsl(var(--foreground));
+    background: hsl(var(--secondary));
   }
 
-  .neu-convex {
-    background: linear-gradient(145deg, hsl(220 20% 95%), hsl(220 20% 89%));
-    box-shadow: var(--neu-shadow-light), var(--neu-shadow-dark);
+  .nb-card-primary {
+    @apply rounded-lg p-6 border-2 border-foreground;
+    box-shadow: 4px 4px 0px 0px hsl(var(--foreground));
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
   }
 
-  .neu-card {
-    @apply rounded-2xl p-6;
-    background: linear-gradient(145deg, hsl(220 20% 95%), hsl(220 20% 90%));
-    box-shadow: var(--neu-shadow-light), var(--neu-shadow-dark);
+  .nb-input {
+    @apply rounded-lg px-4 py-3 outline-none transition-all duration-150 bg-card border-2 border-foreground text-foreground;
+    box-shadow: 3px 3px 0px 0px hsl(var(--foreground));
   }
 
-  .neu-input {
-    @apply rounded-xl px-4 py-3 outline-none transition-all duration-200;
-    background: hsl(var(--background));
-    box-shadow: var(--neu-shadow-inset-light), var(--neu-shadow-inset-dark);
+  .nb-input:focus {
+    box-shadow: 1px 1px 0px 0px hsl(var(--foreground));
+    transform: translate(2px, 2px);
   }
 
-  .neu-input:focus {
-    box-shadow: var(--neu-shadow-inset-light), var(--neu-shadow-inset-dark), 0 0 0 2px hsl(var(--primary) / 0.3);
+  .nb-button {
+    @apply rounded-lg px-6 py-3 font-bold transition-all duration-150 border-2 border-foreground bg-card text-foreground cursor-pointer;
+    box-shadow: 4px 4px 0px 0px hsl(var(--foreground));
   }
 
-  .neu-button {
-    @apply rounded-xl px-6 py-3 font-semibold transition-all duration-200 active:scale-95;
-    box-shadow: var(--neu-shadow-light), var(--neu-shadow-dark);
+  .nb-button:hover {
+    box-shadow: 2px 2px 0px 0px hsl(var(--foreground));
+    transform: translate(2px, 2px);
   }
 
-  .neu-button:active {
-    box-shadow: var(--neu-shadow-inset-light), var(--neu-shadow-inset-dark);
+  .nb-button:active {
+    box-shadow: 0px 0px 0px 0px hsl(var(--foreground));
+    transform: translate(4px, 4px);
   }
 
-  .neu-button-primary {
-    @apply neu-button bg-primary text-primary-foreground;
+  .nb-button-primary {
+    @apply nb-button bg-primary text-primary-foreground;
+  }
+
+  .nb-button-secondary {
+    @apply nb-button text-secondary-foreground;
+    background: hsl(var(--secondary));
+  }
+
+  .nb-button-accent {
+    @apply nb-button text-accent-foreground;
+    background: hsl(var(--accent));
   }
 
   .score-ring {
-    filter: drop-shadow(0 0 8px hsl(var(--primary) / 0.4));
+    filter: drop-shadow(0 0 6px hsl(var(--primary) / 0.3));
   }
 
   .premium-glow {
-    box-shadow: 0 0 20px hsl(var(--premium) / 0.3), var(--neu-shadow-light), var(--neu-shadow-dark);
+    box-shadow: 4px 4px 0px 0px hsl(var(--premium));
+    border: 2px solid hsl(var(--premium));
   }
 
   .warning-pulse {
@@ -131,11 +142,5 @@
   @keyframes pulse-warning {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.7; }
-  }
-
-  .glass-card {
-    background: hsl(220 20% 93% / 0.8);
-    backdrop-filter: blur(10px);
-    box-shadow: var(--neu-shadow-light), var(--neu-shadow-dark);
   }
 }

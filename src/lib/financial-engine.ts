@@ -10,7 +10,6 @@ export function calculateMetrics(data: FinancialData): FinancialMetrics {
   const debtToIncomeRatio = data.monthlyIncome > 0 ? (totalLiabilities / (data.monthlyIncome * 12)) * 100 : 0;
   const liquidityRatio = totalExpenses > 0 ? data.assets.bankBalance / (totalExpenses * 3) : 0;
 
-  // Asset diversification: how spread out across categories
   const assetValues = Object.values(data.assets).filter(v => v > 0);
   const assetDiversificationScore = totalAssets > 0
     ? Math.min(100, (assetValues.length / 5) * 100 * (1 - getConcentration(data.assets, totalAssets)))
@@ -48,22 +47,18 @@ function calculateHealthScore(
 ): number {
   let score = 0;
 
-  // Savings rate (0-30 points)
   if (savingsRate >= 30) score += 30;
   else if (savingsRate >= 20) score += 25;
   else if (savingsRate >= 10) score += 15;
   else if (savingsRate > 0) score += 5;
 
-  // Debt ratio (0-25 points)
   if (debtToIncome <= 10) score += 25;
   else if (debtToIncome <= 30) score += 20;
   else if (debtToIncome <= 50) score += 10;
   else score += 0;
 
-  // Diversification (0-25 points)
   score += Math.round(diversification * 0.25);
 
-  // Liquidity (0-20 points) - 3 months emergency fund = 1.0
   if (liquidity >= 1) score += 20;
   else if (liquidity >= 0.5) score += 12;
   else if (liquidity > 0) score += 5;
@@ -140,31 +135,60 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-export const defaultFinancialData: FinancialData = {
-  monthlyIncome: 100000,
+// Empty default data — user must fill in the form
+export const emptyFinancialData: FinancialData = {
+  monthlyIncome: 0,
   expenses: {
-    housing: 25000,
-    food: 10000,
-    transportation: 5000,
-    utilities: 3000,
-    insurance: 5000,
-    entertainment: 5000,
-    healthcare: 3000,
-    education: 2000,
-    other: 5000,
+    housing: 0,
+    food: 0,
+    transportation: 0,
+    utilities: 0,
+    insurance: 0,
+    entertainment: 0,
+    healthcare: 0,
+    education: 0,
+    other: 0,
   },
   assets: {
-    bankBalance: 300000,
-    gold: 200000,
-    mutualFunds: 500000,
-    stocks: 300000,
+    bankBalance: 0,
+    gold: 0,
+    mutualFunds: 0,
+    stocks: 0,
     realEstate: 0,
   },
   liabilities: {
-    homeLoan: 2000000,
+    homeLoan: 0,
     personalLoan: 0,
-    creditCardDebt: 50000,
+    creditCardDebt: 0,
     otherEMIs: 0,
   },
   riskAppetite: "medium",
 };
+
+// TODO: Replace with your OpenAI API key
+// This should be stored securely (e.g., environment variable or Lovable Cloud secret)
+export const LLM_API_KEY_PLACEHOLDER = "YOUR_OPENAI_API_KEY_HERE";
+
+// TODO: Implement real AI call
+export async function getAIInsights(data: FinancialData, metrics: FinancialMetrics): Promise<string> {
+  // Placeholder — replace with actual OpenAI API call
+  // Example:
+  // const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  //   method: "POST",
+  //   headers: {
+  //     "Content-Type": "application/json",
+  //     "Authorization": `Bearer ${LLM_API_KEY_PLACEHOLDER}`,
+  //   },
+  //   body: JSON.stringify({
+  //     model: "gpt-4o-mini",
+  //     messages: [
+  //       { role: "system", content: "You are a brutally honest Indian financial advisor. No sugarcoating." },
+  //       { role: "user", content: JSON.stringify({ data, metrics }) },
+  //     ],
+  //   }),
+  // });
+  // const result = await response.json();
+  // return result.choices[0].message.content;
+
+  return "AI insights will be powered by OpenAI. Add your API key to enable personalized analysis.";
+}
