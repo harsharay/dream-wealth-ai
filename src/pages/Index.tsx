@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FinancialData } from "@/types/finance";
-import { calculateMetrics, defaultFinancialData } from "@/lib/financial-engine";
+import { calculateMetrics, emptyFinancialData } from "@/lib/financial-engine";
 import { HealthScoreGauge } from "@/components/HealthScoreGauge";
 import { MetricCards } from "@/components/MetricCards";
 import { AssetChart } from "@/components/AssetChart";
@@ -8,81 +8,125 @@ import { LiabilityChart } from "@/components/LiabilityChart";
 import { WarningsPanel } from "@/components/WarningsPanel";
 import { FinancialForm } from "@/components/FinancialForm";
 import { AIInsightsPanel } from "@/components/AIInsightsPanel";
-import { AIChatBot } from "@/components/AIChatBot";
 import { ScenarioSimulator } from "@/components/ScenarioSimulator";
+import { PremiumUpsell } from "@/components/PremiumUpsell";
 import {
   LayoutDashboard,
-  ClipboardEdit,
   Sparkles,
-  MessageSquare,
   FlaskConical,
   Compass,
+  ArrowLeft,
 } from "lucide-react";
 
-type Tab = "dashboard" | "input" | "insights" | "chat" | "simulator";
+type DashboardTab = "overview" | "insights" | "simulator";
 
-const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "input", label: "Finances", icon: ClipboardEdit },
+const DASHBOARD_TABS: { id: DashboardTab; label: string; icon: React.ElementType }[] = [
+  { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "insights", label: "AI Insights", icon: Sparkles },
-  { id: "chat", label: "AI Chat", icon: MessageSquare },
   { id: "simulator", label: "Simulator", icon: FlaskConical },
 ];
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
-  const [financialData, setFinancialData] = useState<FinancialData>(defaultFinancialData);
-  const metrics = calculateMetrics(financialData);
+  const [financialData, setFinancialData] = useState<FinancialData | null>(null);
+  const [dashboardTab, setDashboardTab] = useState<DashboardTab>("overview");
 
   const handleSaveData = (data: FinancialData) => {
     setFinancialData(data);
-    setActiveTab("dashboard");
+    setDashboardTab("overview");
   };
+
+  const handleReset = () => {
+    setFinancialData(null);
+  };
+
+  // Show input form if no data submitted yet
+  if (!financialData) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="border-b-2 border-foreground bg-card">
+          <div className="max-w-3xl mx-auto px-4 py-6 flex items-center gap-3">
+            <div className="w-12 h-12 rounded-lg bg-primary border-2 border-foreground flex items-center justify-center"
+                 style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}>
+              <Compass className="w-6 h-6 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="font-sans text-2xl font-bold text-foreground">WealthPilot</h1>
+              <p className="text-sm text-muted-foreground font-medium">AI-Powered Financial Health Check</p>
+            </div>
+          </div>
+        </header>
+
+        <main className="max-w-3xl mx-auto px-4 py-8">
+          <div className="mb-8">
+            <h2 className="text-3xl font-bold text-foreground mb-2">Enter your finances</h2>
+            <p className="text-muted-foreground">
+              Fill in your details below. We'll analyze everything and give you a brutally honest financial diagnosis.
+            </p>
+          </div>
+          <FinancialForm data={emptyFinancialData} onSave={handleSaveData} />
+        </main>
+      </div>
+    );
+  }
+
+  const metrics = calculateMetrics(financialData);
 
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 glass-card border-b border-border/50">
+      <header className="sticky top-0 z-50 border-b-2 border-foreground bg-card">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-primary border-2 border-foreground flex items-center justify-center"
+                 style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}>
               <Compass className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="font-display text-xl font-bold text-foreground">WealthPilot</h1>
-              <p className="text-xs text-muted-foreground">AI-Powered Financial Health</p>
+              <h1 className="font-sans text-xl font-bold text-foreground">WealthPilot</h1>
+              <p className="text-xs text-muted-foreground font-medium">Your Financial Report</p>
             </div>
           </div>
-          <div className="hidden md:flex items-center gap-1 p-1 rounded-xl neu-pressed">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === tab.id
-                    ? "neu-flat bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <tab.icon className="w-4 h-4" />
-                {tab.label}
-              </button>
-            ))}
+
+          <div className="flex items-center gap-2">
+            <div className="hidden md:flex items-center gap-1 p-1 rounded-lg border-2 border-foreground bg-muted">
+              {DASHBOARD_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setDashboardTab(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${
+                    dashboardTab === tab.id
+                      ? "bg-primary text-primary-foreground border-2 border-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  style={dashboardTab === tab.id ? { boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" } : {}}
+                >
+                  <tab.icon className="w-4 h-4" />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={handleReset}
+              className="nb-button text-sm px-4 py-2 flex items-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Edit
+            </button>
           </div>
         </div>
       </header>
 
       {/* Mobile Nav */}
-      <nav className="md:hidden sticky top-[73px] z-40 glass-card border-b border-border/50 overflow-x-auto">
+      <nav className="md:hidden sticky top-[65px] z-40 border-b-2 border-foreground bg-card overflow-x-auto">
         <div className="flex gap-1 p-2">
-          {TABS.map((tab) => (
+          {DASHBOARD_TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
-                activeTab === tab.id
-                  ? "neu-flat bg-primary text-primary-foreground"
-                  : "text-muted-foreground"
+              onClick={() => setDashboardTab(tab.id)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-bold whitespace-nowrap transition-all border-2 ${
+                dashboardTab === tab.id
+                  ? "bg-primary text-primary-foreground border-foreground"
+                  : "text-muted-foreground border-transparent"
               }`}
             >
               <tab.icon className="w-3.5 h-3.5" />
@@ -94,7 +138,7 @@ const Index = () => {
 
       {/* Content */}
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-        {activeTab === "dashboard" && (
+        {dashboardTab === "overview" && (
           <>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
@@ -110,19 +154,14 @@ const Index = () => {
           </>
         )}
 
-        {activeTab === "input" && (
-          <div className="max-w-2xl mx-auto">
-            <FinancialForm data={financialData} onSave={handleSaveData} />
+        {dashboardTab === "insights" && (
+          <div className="space-y-6">
+            <AIInsightsPanel metrics={metrics} data={financialData} />
+            <PremiumUpsell />
           </div>
         )}
 
-        {activeTab === "insights" && (
-          <AIInsightsPanel metrics={metrics} data={financialData} />
-        )}
-
-        {activeTab === "chat" && <AIChatBot />}
-
-        {activeTab === "simulator" && <ScenarioSimulator data={financialData} />}
+        {dashboardTab === "simulator" && <ScenarioSimulator data={financialData} />}
       </main>
     </div>
   );

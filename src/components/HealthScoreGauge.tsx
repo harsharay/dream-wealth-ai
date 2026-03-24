@@ -12,14 +12,14 @@ export function HealthScoreGauge({ score }: HealthScoreGaugeProps) {
   const label = getScoreLabel(score);
 
   const strokeColor = useMemo(() => {
-    if (score >= 75) return "#2b9a66";
-    if (score >= 50) return "#d97706";
-    return "#dc2626";
+    if (score >= 75) return "hsl(158, 64%, 42%)";
+    if (score >= 50) return "hsl(45, 93%, 58%)";
+    return "hsl(0, 84%, 60%)";
   }, [score]);
 
   return (
-    <div className="neu-card flex flex-col items-center gap-3">
-      <h3 className="font-display text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+    <div className="nb-card flex flex-col items-center gap-3">
+      <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
         Financial Health
       </h3>
       <div className="relative score-ring">
@@ -27,7 +27,7 @@ export function HealthScoreGauge({ score }: HealthScoreGaugeProps) {
           <circle
             cx="50" cy="50" r="45"
             fill="none"
-            stroke="hsl(220 15% 85%)"
+            stroke="hsl(0, 0%, 90%)"
             strokeWidth="8"
           />
           <circle
@@ -42,8 +42,8 @@ export function HealthScoreGauge({ score }: HealthScoreGaugeProps) {
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className={`font-display text-4xl font-bold ${colorClass}`}>{score}</span>
-          <span className="text-xs text-muted-foreground font-medium">{label}</span>
+          <span className={`font-mono text-4xl font-bold ${colorClass}`}>{score}</span>
+          <span className="text-xs text-muted-foreground font-bold">{label}</span>
         </div>
       </div>
     </div>

@@ -6,7 +6,7 @@ interface AssetChartProps {
   assets: Assets;
 }
 
-const COLORS = ["#2b9a66", "#0ea5e9", "#d97706", "#8b5cf6", "#ec4899"];
+const COLORS = ["hsl(158, 64%, 42%)", "hsl(200, 80%, 55%)", "hsl(45, 93%, 58%)", "hsl(258, 90%, 66%)", "hsl(340, 80%, 60%)"];
 const LABELS: Record<keyof Assets, string> = {
   bankBalance: "Bank",
   gold: "Gold",
@@ -22,8 +22,8 @@ export function AssetChart({ assets }: AssetChartProps) {
 
   if (data.length === 0) {
     return (
-      <div className="neu-card">
-        <h3 className="font-display text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+      <div className="nb-card">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">
           Asset Allocation
         </h3>
         <p className="text-muted-foreground text-sm text-center py-8">No assets recorded</p>
@@ -32,8 +32,8 @@ export function AssetChart({ assets }: AssetChartProps) {
   }
 
   return (
-    <div className="neu-card">
-      <h3 className="font-display text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+    <div className="nb-card">
+      <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">
         Asset Allocation
       </h3>
       <ResponsiveContainer width="100%" height={220}>
@@ -46,6 +46,8 @@ export function AssetChart({ assets }: AssetChartProps) {
             outerRadius={80}
             paddingAngle={4}
             dataKey="value"
+            stroke="hsl(0, 0%, 9%)"
+            strokeWidth={2}
           >
             {data.map((_, index) => (
               <Cell key={index} fill={COLORS[index % COLORS.length]} />
@@ -56,8 +58,8 @@ export function AssetChart({ assets }: AssetChartProps) {
       </ResponsiveContainer>
       <div className="flex flex-wrap gap-3 mt-2 justify-center">
         {data.map((item, i) => (
-          <div key={item.name} className="flex items-center gap-1.5 text-xs">
-            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+          <div key={item.name} className="flex items-center gap-1.5 text-xs font-bold">
+            <div className="w-3 h-3 rounded-sm border-2 border-foreground" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
             <span className="text-muted-foreground">{item.name}</span>
           </div>
         ))}
