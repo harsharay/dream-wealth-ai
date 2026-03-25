@@ -27,9 +27,13 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        setSections(parsed.sections);
-        setStatus("success");
-        return;
+        // User changed storage format to { data: result, timestamp, version }
+        const actualData = parsed.data || parsed;
+        if (actualData && actualData.sections) {
+          setSections(actualData.sections);
+          setStatus("success");
+          return;
+        }
       } catch (e) {
         console.error("Failed to parse cached insights", e);
       }
@@ -91,7 +95,7 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
             title={errorMsg}
           >
             <WifiOff className="w-3.5 h-3.5" />
-            Fallback mode — backend offline
+            {errorMsg.includes("429") ? "Too many requests — try again in 15m" : "Fallback mode — backend offline"}
           </div>
         )}
         {status === "success" && (
