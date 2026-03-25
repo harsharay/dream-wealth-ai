@@ -96,11 +96,25 @@ export default {
           from: { strokeDashoffset: "283" },
           to: { strokeDashoffset: "var(--score-offset)" },
         },
+        shimmer: {
+          "100%": { transform: "translateX(100%)" },
+        },
+        "bounce-slow": {
+          "0%, 100%": { transform: "translateY(-10%)", animationTimingFunction: "cubic-bezier(0.8,0,1,1)" },
+          "50%": { transform: "none", animationTimingFunction: "cubic-bezier(0,0,0.2,1)" },
+        },
+        "pulse-fast": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.3" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "score-fill": "score-fill 1.5s ease-out forwards",
+        shimmer: "shimmer 1.2s infinite linear",
+        "bounce-slow": "bounce-slow 1.5s infinite",
+        "pulse-fast": "pulse-fast 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite",
       },
     },
   },

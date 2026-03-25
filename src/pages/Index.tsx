@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { FinancialData } from "@/types/finance";
 import { calculateMetrics, emptyFinancialData } from "@/lib/financial-engine";
 import { HealthScoreGauge } from "@/components/HealthScoreGauge";
@@ -28,7 +28,13 @@ const DASHBOARD_TABS: { id: DashboardTab; label: string; icon: React.ElementType
 
 const Index = () => {
   const [financialData, setFinancialData] = useState<FinancialData | null>(null);
-  const [dashboardTab, setDashboardTab] = useState<DashboardTab>("overview");
+  const [dashboardTab, setDashboardTab] = useState<DashboardTab>(null);
+
+  // Auto-scroll to top when switching tabs
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [dashboardTab]);
+
 
   const handleSaveData = (data: FinancialData) => {
     setFinancialData(data);
@@ -137,10 +143,10 @@ const Index = () => {
                 onClick={() => !isComingSoon && setDashboardTab(tab.id)}
                 disabled={isComingSoon}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-bold whitespace-nowrap transition-all border-2 ${dashboardTab === tab.id
-                    ? "bg-primary text-primary-foreground border-foreground"
-                    : isComingSoon
-                      ? "text-muted-foreground/50 border-transparent opacity-60"
-                      : "text-muted-foreground border-transparent"
+                  ? "bg-primary text-primary-foreground border-foreground"
+                  : isComingSoon
+                    ? "text-muted-foreground/50 border-transparent opacity-60"
+                    : "text-muted-foreground border-transparent"
                   }`}
               >
                 <tab.icon className="w-3.5 h-3.5" />

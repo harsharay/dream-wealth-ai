@@ -29,18 +29,37 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
   const inputClass = "nb-input w-full text-sm";
   const labelClass = "text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block";
 
+  const formatValue = (val: number) => {
+    if (val === 0) return "";
+    return new Intl.NumberFormat("en-IN").format(val);
+  };
+
+  const handleInputChange = (section: string, field: string, value: string) => {
+    const rawValue = value.replace(/,/g, "");
+    if (rawValue === "" || /^\d*$/.test(rawValue)) {
+      updateField(section, field, rawValue);
+    }
+  };
+
   const renderField = (label: string, section: string, field: string, val: number) => (
     <div key={field}>
       <label className={labelClass}>{label}</label>
       <input
-        type="number"
+        type="text"
+        inputMode="numeric"
         className={inputClass}
-        value={val || ""}
-        onChange={(e: ChangeEvent<HTMLInputElement>) => updateField(section, field, e.target.value)}
+        value={formatValue(val)}
+        onChange={(e: ChangeEvent<HTMLInputElement>) => handleInputChange(section, field, e.target.value)}
         placeholder="₹ 0"
       />
     </div>
   );
+
+  const isFormEmpty =
+    form.monthlyIncome === 0 &&
+    Object.values(form.expenses).every((v) => v === 0) &&
+    Object.values(form.assets).every((v) => v === 0) &&
+    Object.values(form.liabilities).every((v) => v === 0);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -89,11 +108,10 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
               key={level}
               type="button"
               onClick={() => setForm(prev => ({ ...prev, riskAppetite: level }))}
-              className={`flex-1 capitalize text-sm font-bold py-3 px-4 rounded-lg border-2 border-foreground transition-all ${
-                form.riskAppetite === level
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-card text-muted-foreground hover:text-foreground"
-              }`}
+              className={`flex-1 capitalize text-sm font-bold py-3 px-4 rounded-lg border-2 border-foreground transition-all ${form.riskAppetite === level
+                ? "bg-primary text-primary-foreground"
+                : "bg-card text-muted-foreground hover:text-foreground"
+                }`}
               style={{ boxShadow: form.riskAppetite === level ? "2px 2px 0px 0px hsl(var(--foreground))" : "3px 3px 0px 0px hsl(var(--foreground))" }}
             >
               {level}
@@ -102,9 +120,20 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
         </div>
       </div>
 
-      <button type="submit" className="nb-button-primary w-full text-base py-4">
-        Show My Financial Insights →
-      </button>
+      <div className="space-y-2">
+        <button
+          type="submit"
+          disabled={isFormEmpty}
+          className={`w-full text-base py-4 ${isFormEmpty ? "nb-button opacity-50 cursor-not-allowed" : "nb-button-primary"}`}
+        >
+          {isFormEmpty ? "Enter Some Data to Continue" : "Show My Financial Insights →"}
+        </button>
+        {isFormEmpty && (
+          <p className="text-center text-xs font-bold text-muted-foreground animate-pulse">
+            * Please enter at least one financial record for each section
+          </p>
+        )}
+      </div>
     </form>
   );
 }

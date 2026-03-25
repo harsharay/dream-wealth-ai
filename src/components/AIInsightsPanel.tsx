@@ -68,6 +68,8 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(data), JSON.stringify(metrics)]);
 
+  const colors = ["bg-accent/20", "bg-secondary/20", "bg-primary/20", "bg-success/20"];
+
   return (
     <div className="nb-card">
       <div className="flex items-center justify-between gap-2 mb-6">
@@ -108,14 +110,25 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
 
       {/* Loading skeleton */}
       {status === "loading" && (
-        <div className="space-y-4 animate-pulse">
+        <div className="space-y-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="rounded-lg p-4 border-2 border-foreground/20 bg-muted/40"
-              style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground) / 0.15)" }}>
-              <div className="h-3 w-24 bg-foreground/20 rounded mb-3" />
-              <div className="space-y-2">
-                <div className="h-3 w-full bg-foreground/10 rounded" />
-                <div className="h-3 w-4/5 bg-foreground/10 rounded" />
+            <div
+              key={i}
+              className={`relative overflow-hidden rounded-lg p-4 border-2 border-foreground/30 ${colors[(i - 1) % colors.length]}`}
+              style={{
+                boxShadow: "4px 4px 0px 0px hsl(var(--foreground))",
+              }}
+            >
+              {/* SHIMMER LAYER: Extra vibrant for Neobrutalism */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-shimmer" />
+
+              {/* CONTENT */}
+              <div className="relative z-10">
+                <div className="h-3 w-28 bg-foreground/30 rounded mb-4 animate-bounce-slow" />
+                <div className="space-y-2">
+                  <div className="h-3 w-full bg-foreground/15 rounded animate-pulse-fast" />
+                  <div className="h-3 w-5/6 bg-foreground/15 rounded animate-pulse-fast delay-100" />
+                </div>
               </div>
             </div>
           ))}
