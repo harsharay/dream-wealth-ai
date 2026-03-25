@@ -46,7 +46,7 @@ const Index = () => {
         <header className="border-b-2 border-foreground bg-card">
           <div className="max-w-3xl mx-auto px-4 py-6 flex items-center gap-3">
             <div className="w-12 h-12 rounded-lg bg-primary border-2 border-foreground flex items-center justify-center"
-                 style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}>
+              style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}>
               <Compass className="w-6 h-6 text-primary-foreground" />
             </div>
             <div>
@@ -78,7 +78,7 @@ const Index = () => {
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-primary border-2 border-foreground flex items-center justify-center"
-                 style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}>
+              style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}>
               <Compass className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
@@ -89,21 +89,31 @@ const Index = () => {
 
           <div className="flex items-center gap-2">
             <div className="hidden md:flex items-center gap-1 p-1 rounded-lg border-2 border-foreground bg-muted">
-              {DASHBOARD_TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setDashboardTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${
-                    dashboardTab === tab.id
+              {DASHBOARD_TABS.map((tab) => {
+                const isComingSoon = tab.id === "simulator";
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => !isComingSoon && setDashboardTab(tab.id)}
+                    disabled={isComingSoon}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all ${dashboardTab === tab.id
                       ? "bg-primary text-primary-foreground border-2 border-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                  style={dashboardTab === tab.id ? { boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" } : {}}
-                >
-                  <tab.icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              ))}
+                      : isComingSoon
+                        ? "text-muted-foreground/50 cursor-not-allowed opacity-60"
+                        : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    style={dashboardTab === tab.id ? { boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" } : {}}
+                  >
+                    <tab.icon className="w-4 h-4" />
+                    {tab.label}
+                    {isComingSoon && (
+                      <span className="ml-1 px-1.5 py-0.5 rounded bg-muted text-[10px] uppercase tracking-tighter border border-foreground/10">
+                        Soon
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
             <button
               onClick={handleReset}
@@ -119,20 +129,30 @@ const Index = () => {
       {/* Mobile Nav */}
       <nav className="md:hidden sticky top-[65px] z-40 border-b-2 border-foreground bg-card overflow-x-auto">
         <div className="flex gap-1 p-2">
-          {DASHBOARD_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setDashboardTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-bold whitespace-nowrap transition-all border-2 ${
-                dashboardTab === tab.id
-                  ? "bg-primary text-primary-foreground border-foreground"
-                  : "text-muted-foreground border-transparent"
-              }`}
-            >
-              <tab.icon className="w-3.5 h-3.5" />
-              {tab.label}
-            </button>
-          ))}
+          {DASHBOARD_TABS.map((tab) => {
+            const isComingSoon = tab.id === "simulator";
+            return (
+              <button
+                key={tab.id}
+                onClick={() => !isComingSoon && setDashboardTab(tab.id)}
+                disabled={isComingSoon}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-bold whitespace-nowrap transition-all border-2 ${dashboardTab === tab.id
+                    ? "bg-primary text-primary-foreground border-foreground"
+                    : isComingSoon
+                      ? "text-muted-foreground/50 border-transparent opacity-60"
+                      : "text-muted-foreground border-transparent"
+                  }`}
+              >
+                <tab.icon className="w-3.5 h-3.5" />
+                {tab.label}
+                {isComingSoon && (
+                  <span className="ml-1 px-1 py-0 rounded bg-muted text-[8px] uppercase border border-foreground/10">
+                    Soon
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </nav>
 
