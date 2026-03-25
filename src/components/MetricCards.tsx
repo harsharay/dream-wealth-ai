@@ -7,6 +7,7 @@ interface MetricCardsProps {
 }
 
 export function MetricCards({ metrics }: MetricCardsProps) {
+  console.log(metrics);
   const cards = [
     {
       label: "Net Worth",
@@ -27,7 +28,7 @@ export function MetricCards({ metrics }: MetricCardsProps) {
       value: `${metrics.debtToIncomeRatio.toFixed(1)}%`,
       icon: metrics.debtToIncomeRatio <= 30 ? TrendingDown : AlertTriangle,
       positive: metrics.debtToIncomeRatio <= 30,
-      bg: metrics.debtToIncomeRatio > 30 ? "bg-danger" : "bg-card",
+      bg: metrics.debtToIncomeRatio > 30 ? "bg-[#4bee22]" : "bg-card",
     },
     {
       label: "Total Assets",
