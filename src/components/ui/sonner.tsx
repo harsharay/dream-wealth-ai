@@ -18,6 +18,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
           actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
           cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
         },
+        style: {
+          border: '1px solid black',
+          boxShadow: '4px 4px 0px 0px hsl(var(--foreground))'
+        }
       }}
       {...props}
     />

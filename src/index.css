@@ -126,6 +126,31 @@
     background: hsl(var(--accent));
   }
 
+  .nb-button-outline {
+    @apply rounded-lg px-4 py-2 font-bold transition-all duration-150 border-2 border-foreground bg-transparent text-foreground cursor-pointer;
+    box-shadow: 2px 2px 0px 0px hsl(var(--foreground));
+  }
+
+  .nb-button-outline:hover {
+    box-shadow: 1px 1px 0px 0px hsl(var(--foreground));
+    transform: translate(1px, 1px);
+    @apply bg-foreground/5;
+  }
+
+  .nb-button-outline:active {
+    box-shadow: 0px 0px 0px 0px hsl(var(--foreground));
+    transform: translate(2px, 2px);
+  }
+
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-md border-2 border-foreground;
+    box-shadow: 4px 4px 0px 0px hsl(var(--foreground));
+  }
+
+  .glass-header {
+    @apply bg-background/80 backdrop-blur-md sticky top-0 z-50 border-b-4 border-foreground;
+  }
+
   .score-ring {
     filter: drop-shadow(0 0 6px hsl(var(--primary) / 0.3));
   }

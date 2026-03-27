@@ -42,7 +42,7 @@ export function MetricCards({ metrics }: MetricCardsProps) {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map((card) => (
-        <div key={card.label} className={`nb-card ${card.bg} flex flex-col gap-2`}>
+        <div key={card.label} className={`nb-card ${card.bg} flex flex-col justify-center gap-2 h-full`}>
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-foreground/60">
               {card.label}

@@ -18,7 +18,7 @@ export function HealthScoreGauge({ score }: HealthScoreGaugeProps) {
   }, [score]);
 
   return (
-    <div className="nb-card flex flex-col items-center gap-3">
+    <div className="nb-card flex flex-col items-center justify-center h-full gap-3">
       <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
         Financial Health
       </h3>

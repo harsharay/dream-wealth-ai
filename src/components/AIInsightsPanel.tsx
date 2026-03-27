@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import hash from "object-hash";
+import { useAuth } from "@/contexts/AuthContext";
 import type { FinancialMetrics, FinancialData } from "@/types/finance";
 import { Sparkles, Loader2, WifiOff } from "lucide-react";
 import { fetchAIInsights, type InsightSection } from "@/lib/llm-service";
 import { generateFallbackInsights } from "@/lib/financial-engine";
+const ENV = import.meta.env.VITE_ENV;
 
 interface AIInsightsPanelProps {
   metrics: FinancialMetrics;
@@ -13,6 +15,7 @@ interface AIInsightsPanelProps {
 type Status = "loading" | "success" | "error";
 
 export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
+  const { user } = useAuth();
   const [sections, setSections] = useState<InsightSection[]>([]);
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState<string>("");
@@ -22,12 +25,11 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
   useEffect(() => {
     let cancelled = false;
 
-    // Check localStorage first
+    // Check localStorage first (local fast cache)
     const cached = localStorage.getItem(cacheKey);
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        // User changed storage format to { data: result, timestamp, version }
         const actualData = parsed.data || parsed;
         if (actualData && actualData.sections) {
           setSections(actualData.sections);
@@ -42,12 +44,19 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
     setStatus("loading");
     setSections([]);
 
-    fetchAIInsights(data, metrics)
+    if (ENV === "dev") {
+      // @ts-ignore - generateInsights is a dev helper defined at the bottom
+      setSections(generateInsights(metrics, data));
+      setStatus("success");
+      return;
+    }
+
+    fetchAIInsights(data, metrics, user?.id)
       .then((result) => {
         if (cancelled) return;
         setSections(result.sections);
         setStatus("success");
-        // Save to cache
+        // Save to local cache too
         localStorage.setItem(cacheKey, JSON.stringify({
           data: result,
           timestamp: Date.now(),
@@ -64,9 +73,10 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
       });
 
     return () => { cancelled = true; };
-    // Re-fetch if financial data changes
+    // Re-fetch if financial data changes or user logs in
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(data), JSON.stringify(metrics)]);
+  }, [JSON.stringify(data), JSON.stringify(metrics), user?.id]);
+
 
   const colors = ["bg-accent/20", "bg-secondary/20", "bg-primary/20", "bg-success/20"];
 
@@ -161,4 +171,52 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
       )}
     </div>
   );
+}
+
+
+// DEV: Generate these insights from LLM 
+function generateInsights(metrics: FinancialMetrics, data: FinancialData) {
+  const sections = [];
+
+  const diagnosis: string[] = [];
+  if (metrics.healthScore >= 70) {
+    diagnosis.push("Your financial health is solid. You're in the top bracket — but there's always room to optimize.");
+  } else if (metrics.healthScore >= 40) {
+    diagnosis.push("Your finances are mediocre. Not terrible, but not where they should be. Time to get serious.");
+  } else {
+    diagnosis.push("Your financial health is in critical condition. Every month you delay action costs you real money.");
+  }
+  diagnosis.push(`Net worth of ${new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(metrics.netWorth)} with ${metrics.savingsRate.toFixed(0)}% savings rate.`);
+  sections.push({ title: "Diagnosis", items: diagnosis, emoji: "🩺", bullet: "→", bgColor: "bg-accent/20" });
+
+  const risks: string[] = [];
+  if (metrics.liquidityRatio < 1) risks.push("Insufficient emergency fund — you're one job loss away from financial crisis.");
+  if (data.liabilities.creditCardDebt > 0) risks.push("Active credit card debt is silently draining your wealth at 36%+ APR.");
+  if (metrics.debtToIncomeRatio > 40) risks.push("Dangerously high leverage. You're over-exposed to interest rate risk.");
+  if (risks.length === 0) risks.push("No critical risks detected. Stay disciplined.");
+  sections.push({ title: "Key Risks", items: risks, emoji: "⚠️", bullet: "✕", bgColor: "bg-danger/10" });
+
+  const opps: string[] = [];
+  if (data.assets.mutualFunds === 0 && data.assets.stocks === 0) {
+    opps.push("You have zero market exposure. Start a SIP in a Nifty 50 index fund today.");
+  }
+  if (metrics.savingsRate > 20 && data.assets.realEstate === 0) {
+    opps.push("Strong savings rate but no real estate. Consider REITs for diversification.");
+  }
+  if (data.riskAppetite === "high" && data.assets.stocks < data.assets.bankBalance) {
+    opps.push("Your risk appetite is high but most money sits in the bank. Reallocate to equities.");
+  }
+  if (opps.length === 0) opps.push("Your allocation looks balanced. Focus on growing each bucket.");
+  sections.push({ title: "Missed Opportunities", items: opps, emoji: "💡", bullet: "★", bgColor: "bg-secondary/30" });
+
+  const actions: string[] = [];
+  if (data.liabilities.creditCardDebt > 0) actions.push("IMMEDIATE: Pay off credit card debt. This is priority #1.");
+  if (metrics.liquidityRatio < 1) actions.push("Build emergency fund to cover 6 months of expenses.");
+  actions.push("Automate savings — transfer 20% of income on salary day.");
+  if (data.assets.mutualFunds > 0 || data.assets.stocks > 0) {
+    actions.push("Review portfolio quarterly. Rebalance if any single asset exceeds 40% allocation.");
+  }
+  sections.push({ title: "Action Plan", items: actions, emoji: "🎯", bullet: "→", bgColor: "bg-accent/10" });
+
+  return sections;
 }
