@@ -66,7 +66,7 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
       {/* Income */}
       <div className="nb-card">
         <h3 className="font-sans font-bold text-foreground mb-4 text-lg">💰 Monthly Income</h3>
-        {renderField("Total Monthly Income", "root", "monthlyIncome", form.monthlyIncome)}
+        {renderField("Total Monthly Income (per month)", "root", "monthlyIncome", form.monthlyIncome)}
       </div>
 
       {/* Expenses */}
@@ -74,7 +74,7 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
         <h3 className="font-sans font-bold text-foreground mb-4 text-lg">🧾 Monthly Expenses</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {Object.entries(form.expenses).map(([key, val]) =>
-            renderField(key.replace(/([A-Z])/g, " $1").trim(), "expenses", key, val)
+            renderField(`${key.replace(/([A-Z])/g, " $1").trim()} (per month)`, "expenses", key, val)
           )}
         </div>
       </div>
@@ -94,7 +94,7 @@ export function FinancialForm({ data, onSave }: FinancialFormProps) {
         <h3 className="font-sans font-bold text-foreground mb-4 text-lg">💳 Liabilities</h3>
         <div className="grid grid-cols-2 gap-4">
           {Object.entries(form.liabilities).map(([key, val]) =>
-            renderField(key.replace(/([A-Z])/g, " $1").trim(), "liabilities", key, val)
+            renderField(`${key.replace(/([A-Z])/g, " $1").trim()} ${(key !== 'creditCardDebt') ? '(EMI)' : ''}`, "liabilities", key, val)
           )}
         </div>
       </div>

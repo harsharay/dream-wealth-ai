@@ -53,41 +53,56 @@ const Index = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [dashboardTab]);
 
-  // Fetch data from Supabase on load - Optimized to prevent redundant calls
+  // Auto-reset state when user changes to prevent cross-account data leakage (P0)
   useEffect(() => {
-    const fetchData = async () => {
-      if (!user || fetchedRef.current) return;
+    if (!user) {
+      setFinancialData(null);
+      fetchedRef.current = false;
+      setDashboardTab(null);
+    } else {
+      // If user changed but we still have old data from previous user
+      // (This can happen in some SPA transitions)
+      setFinancialData(null);
+      fetchedRef.current = false;
+      fetchData();
+    }
+  }, [user?.id]); // Only trigger on ID change to avoid unnecessary resets on metadata updates
 
-      setFetchingData(true);
-      try {
-        const { data, error } = await supabase
-          .from("financial_records")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .single();
+  // Fetch data from Supabase on load - Optimized to prevent redundant calls
+  const fetchData = async () => {
+    if (!user || fetchedRef.current) return;
 
-        if (data && !error) {
-          setFinancialData({
-            monthlyIncome: data.monthly_income,
-            expenses: data.expenses as any,
-            assets: data.assets as any,
-            liabilities: data.liabilities as any,
-            riskAppetite: data.risk_appetite as any,
-          });
-          setDashboardTab("overview");
-          fetchedRef.current = true;
-        }
-      } catch (err) {
-        console.warn("Fetch error or no records:", err);
-      } finally {
-        setFetchingData(false);
+    setFetchingData(true);
+    try {
+      const { data, error } = await supabase
+        .from("financial_records")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (data && !error) {
+        setFinancialData({
+          monthlyIncome: data.monthly_income,
+          expenses: data.expenses as any,
+          assets: data.assets as any,
+          liabilities: data.liabilities as any,
+          riskAppetite: data.risk_appetite as any,
+        });
+        setDashboardTab("overview");
+        fetchedRef.current = true;
       }
-    };
+    } catch (err) {
+      console.warn("Fetch error or no records:", err);
+    } finally {
+      setFetchingData(false);
+    }
+  };
 
+  useEffect(() => {
     if (user) fetchData();
-  }, [user]);
+  }, [user?.id]); // Consolidate fetching logic
 
   const handleSaveData = async (data: FinancialData) => {
     if (!user) return;
@@ -135,12 +150,14 @@ const Index = () => {
     setIsMobileMenuOpen(false);
   };
 
-  if (authLoading || (fetchingData && !fetchedRef.current)) {
+  // Show loading state if we are initially authenticating OR fetching first-time data
+  // We check !user for authLoading to prevent full-screen unmounts on mobile app switch (session refreshes)
+  if ((authLoading && !user) || (fetchingData && !fetchedRef.current)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
         <p className="font-bold text-muted-foreground animate-pulse">
-          {authLoading ? "Authenticating..." : "Synchronizing cloud data..."}
+          {authLoading && !user ? "Authenticating..." : "Synchronizing cloud data..."}
         </p>
       </div>
     );
