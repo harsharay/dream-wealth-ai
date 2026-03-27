@@ -160,7 +160,7 @@ export const emptyFinancialData: FinancialData = {
     homeLoan: 0,
     personalLoan: 0,
     creditCardDebt: 0,
-    otherEMIs: 0,
+    others: 0,
   },
   riskAppetite: "medium",
 };

@@ -10,7 +10,7 @@ export interface Liabilities {
   homeLoan: number;
   personalLoan: number;
   creditCardDebt: number;
-  otherEMIs: number;
+  others: number;
 }
 
 export interface ExpenseCategories {

@@ -8,14 +8,14 @@ export function AuthForm() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [fullName, setFullName] = useState("");
-    const [isSignUp, setIsSignUp] = useState(false);
+    const [view, setView] = useState<'login' | 'signup' | 'forgot-password'>('login');
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
 
         try {
-            if (isSignUp) {
+            if (view === 'signup') {
                 const { error } = await supabase.auth.signUp({
                     email,
                     password,
@@ -40,22 +40,42 @@ export function AuthForm() {
         }
     };
 
+    const handleForgotPassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: `${window.location.origin}/reset-password`,
+            });
+            if (error) throw error;
+            toast.success("Password reset link sent to your email!");
+            setView('login');
+        } catch (error: any) {
+            toast.error(error.message || "Failed to send reset link");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="max-w-md mx-auto mt-12">
             <div className="nb-card p-8">
                 <div className="text-center mb-8">
                     <h2 className="text-3xl font-bold text-foreground mb-2">
-                        {isSignUp ? "Join WealthPilot" : "Welcome!"}
+                        {view === 'signup' ? "Join WealthPilot" : view === 'forgot-password' ? "Reset Password" : "Welcome!"}
                     </h2>
                     <p className="text-muted-foreground text-sm font-medium">
-                        {isSignUp
+                        {view === 'signup'
                             ? "Create an account to save your financial health progress."
-                            : "Sign in to access your financial diagnoses."}
+                            : view === 'forgot-password'
+                                ? "Enter your email to receive a reset link."
+                                : "Sign in to access your financial diagnoses."}
                     </p>
                 </div>
 
-                <form onSubmit={handleAuth} className="space-y-4">
-                    {isSignUp && (
+                <form onSubmit={view === 'forgot-password' ? handleForgotPassword : handleAuth} className="space-y-4">
+                    {view === 'signup' && (
                         <div>
                             <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block">
                                 Full Name
@@ -85,20 +105,33 @@ export function AuthForm() {
                         />
                     </div>
 
-                    <div>
-                        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block">
-                            Password
-                        </label>
-                        <input
-                            type="password"
-                            required
-                            className="nb-input w-full"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                            minLength={6}
-                        />
-                    </div>
+                    {view !== 'forgot-password' && (
+                        <div>
+                            <div className="flex justify-between items-end mb-1">
+                                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
+                                    Password
+                                </label>
+                                {view === 'login' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setView('forgot-password')}
+                                        className="text-[10px] font-bold text-primary hover:underline"
+                                    >
+                                        Forgot?
+                                    </button>
+                                )}
+                            </div>
+                            <input
+                                type="password"
+                                required
+                                className="nb-input w-full"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="••••••••"
+                                minLength={6}
+                            />
+                        </div>
+                    )}
 
                     <button
                         type="submit"
@@ -108,18 +141,28 @@ export function AuthForm() {
                         {loading ? (
                             <Loader2 className="w-5 h-5 animate-spin" />
                         ) : (
-                            isSignUp ? "Sign Up →" : "Login →"
+                            view === 'signup' ? "Sign Up →" : view === 'forgot-password' ? "Send Reset Link →" : "Login →"
                         )}
                     </button>
                 </form>
 
-                <div className="mt-8 text-center">
+                <div className="mt-8 text-center flex flex-col gap-2">
                     <button
-                        onClick={() => setIsSignUp(!isSignUp)}
+                        type="button"
+                        onClick={() => setView(view === 'signup' ? 'login' : 'signup')}
                         className="text-sm font-bold text-primary hover:underline"
                     >
-                        {isSignUp ? "Already have an account? Login" : "Don't have an account? Sign Up"}
+                        {view === 'signup' ? "Already have an account? Login" : "Don't have an account? Sign Up"}
                     </button>
+                    {view === 'forgot-password' && (
+                        <button
+                            type="button"
+                            onClick={() => setView('login')}
+                            className="text-xs font-bold text-muted-foreground hover:text-foreground"
+                        >
+                            ← Back to Login
+                        </button>
+                    )}
                 </div>
             </div>
 
