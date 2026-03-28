@@ -1,14 +1,31 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Loader2, ArrowLeft, Lock, Compass } from "lucide-react";
+import { Loader2, ArrowLeft, Lock, Compass, Moon, Sun } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 
 export default function ResetPassword() {
     const [loading, setLoading] = useState(false);
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const navigate = useNavigate();
+
+    const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+        const stored = localStorage.getItem('theme');
+        if (stored === 'dark' || stored === 'light') return stored;
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    });
+
+    // Apply theme class
+    useEffect(() => {
+        if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+        localStorage.setItem('theme', theme);
+    }, [theme]);
 
     const handleReset = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -43,6 +60,13 @@ export default function ResetPassword() {
                     <Compass className="w-6 h-6 text-primary-foreground" />
                 </div>
                 <h1 className="font-sans text-3xl font-bold text-foreground">WealthPilot</h1>
+                <button
+                    onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                    className="nb-button-outline p-2 ml-4"
+                    title="Toggle Theme"
+                >
+                    {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+                </button>
             </div>
 
             <div className="w-full max-w-md mx-auto">

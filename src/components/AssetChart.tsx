@@ -46,14 +46,23 @@ export function AssetChart({ assets }: AssetChartProps) {
             outerRadius={80}
             paddingAngle={4}
             dataKey="value"
-            stroke="hsl(0, 0%, 9%)"
+            stroke="hsl(var(--foreground))"
             strokeWidth={2}
           >
             {data.map((_, index) => (
               <Cell key={index} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip formatter={(val: number) => formatCurrency(val)} />
+          <Tooltip
+            formatter={(val: number) => formatCurrency(val)}
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
+              borderColor: "hsl(var(--foreground))",
+              borderRadius: "8px",
+              boxShadow: "4px 4px 0px 0px hsl(var(--foreground))",
+              color: "hsl(var(--foreground))"
+            }}
+          />
         </PieChart>
       </ResponsiveContainer>
       <div className="flex flex-wrap gap-3 mt-2 justify-center">
