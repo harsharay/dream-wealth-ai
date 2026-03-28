@@ -29,6 +29,8 @@ import {
   ChevronDown,
   Menu,
   X,
+  Moon,
+  Sun,
 } from "lucide-react";
 
 type DashboardTab = "overview" | "insights" | "simulator";
@@ -46,7 +48,22 @@ const Index = () => {
   const [fetchingData, setFetchingData] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const stored = localStorage.getItem('theme');
+    if (stored === 'dark' || stored === 'light') return stored;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
   const fetchedRef = useRef(false);
+
+  // Apply theme class
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   // Auto-scroll to top when switching tabs
   useEffect(() => {
@@ -173,6 +190,13 @@ const Index = () => {
             <Compass className="w-6 h-6 text-primary-foreground" />
           </div>
           <h1 className="font-sans text-3xl font-bold text-foreground">WealthPilot</h1>
+          <button
+            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            className="nb-button-outline p-2 ml-4"
+            title="Toggle Theme"
+          >
+            {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+          </button>
         </div>
         <AuthForm />
       </div>
@@ -192,6 +216,13 @@ const Index = () => {
             <h1 className="font-sans text-2xl font-bold text-foreground">WealthPilot</h1>
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+              className="nb-button-outline p-2 mr-2"
+              title="Toggle Theme"
+            >
+              {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+            </button>
             {isEditing && (
               <button
                 onClick={() => setIsEditing(false)}
@@ -254,6 +285,13 @@ const Index = () => {
 
             <div className="flex items-center gap-2 lg:hidden">
               <button
+                onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                className="nb-button-outline p-2"
+                title="Toggle Theme"
+              >
+                {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+              </button>
+              <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 className="nb-button-outline p-2 transition-transform duration-200"
                 style={{ transform: isMobileMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
@@ -315,6 +353,13 @@ const Index = () => {
           </nav>
 
           <div className="hidden lg:flex items-center gap-3">
+            <button
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+              className="nb-button-outline p-2 mr-2"
+              title="Toggle Theme"
+            >
+              {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+            </button>
             <button
               onClick={handleNewReport}
               className="flex justify-center items-center flex-wrap nb-button-outline flex items-center gap-2 px-4 py-2 font-bold text-sm bg-secondary/10"

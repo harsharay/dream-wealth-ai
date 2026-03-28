@@ -7,7 +7,6 @@ interface MetricCardsProps {
 }
 
 export function MetricCards({ metrics }: MetricCardsProps) {
-  console.log(metrics);
   const cards = [
     {
       label: "Net Worth",
@@ -28,7 +27,7 @@ export function MetricCards({ metrics }: MetricCardsProps) {
       value: `${metrics.debtToIncomeRatio.toFixed(1)}%`,
       icon: metrics.debtToIncomeRatio <= 30 ? TrendingDown : AlertTriangle,
       positive: metrics.debtToIncomeRatio <= 30,
-      bg: metrics.debtToIncomeRatio > 30 ? "bg-[#4bee22]" : "bg-card",
+      bg: metrics.debtToIncomeRatio > 30 ? "bg-danger" : "bg-card",
     },
     {
       label: "Total Assets",
@@ -41,21 +40,27 @@ export function MetricCards({ metrics }: MetricCardsProps) {
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {cards.map((card) => (
-        <div key={card.label} className={`nb-card ${card.bg} flex flex-col justify-center gap-2 h-full`}>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-foreground/60">
-              {card.label}
+      {cards.map((card) => {
+        const isBrightBg = card.bg === "bg-accent" || card.bg === "bg-secondary";
+        return (
+          <div
+            key={card.label}
+            className={`nb-card ${card.bg} flex flex-col justify-center gap-2 h-full transition-colors`}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`text-xs font-bold uppercase tracking-wider ${isBrightBg ? "text-black/60" : "text-foreground/60"}`}>
+                {card.label}
+              </span>
+              <card.icon
+                className={`w-4 h-4 ${card.positive ? (isBrightBg ? "text-black/80" : "text-success") : "text-black"}`}
+              />
+            </div>
+            <span className={`font-mono text-xl font-bold ${card.positive ? (isBrightBg ? "text-black" : "text-foreground") : "text-black"}`}>
+              {card.value}
             </span>
-            <card.icon
-              className={`w-4 h-4 ${card.positive ? "text-success" : "text-danger"}`}
-            />
           </div>
-          <span className={`font-mono text-xl font-bold ${card.positive ? "text-foreground" : "text-danger"}`}>
-            {card.value}
-          </span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

@@ -55,6 +55,45 @@
     --sidebar-border: 0 0% 9%;
     --sidebar-ring: 258 90% 66%;
   }
+
+  .dark {
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 10% 6%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 10% 6%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 258 90% 66%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 45 93% 58%;
+    --secondary-foreground: 240 10% 4%;
+
+    --muted: 240 5% 15%;
+    --muted-foreground: 240 5% 65%;
+
+    --accent: 158 64% 52%;
+    --accent-foreground: 240 10% 4%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 5% 20%;
+    --input: 240 5% 20%;
+    --ring: 258 90% 66%;
+
+    --success: 158 64% 52%;
+    --success-foreground: 0 0% 100%;
+    --warning: 45 93% 58%;
+    --warning-foreground: 240 10% 4%;
+    --danger: 0 84% 60%;
+    --danger-foreground: 0 0% 100%;
+    --premium: 258 90% 66%;
+    --premium-foreground: 0 0% 100%;
+  }
 }
 
 @layer base {
@@ -68,6 +107,7 @@
 }
 
 @layer components {
+
   /* Neobrutalism card */
   .nb-card {
     @apply rounded-lg p-6 bg-card border-2 border-foreground;
@@ -165,7 +205,14 @@
   }
 
   @keyframes pulse-warning {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
+
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.7;
+    }
   }
 }
