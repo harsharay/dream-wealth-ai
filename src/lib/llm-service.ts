@@ -2,7 +2,8 @@ import { supabase } from "@/lib/supabase";
 import hash from "object-hash";
 import type { FinancialData, FinancialMetrics } from "@/types/finance";
 
-const BACKEND_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const isDev = import.meta.env.VITE_ENV;
+const BACKEND_URL = isDev ? "http://localhost:3001" : import.meta.env.VITE_API_URL;
 
 export interface InsightSection {
     title: string;
@@ -25,50 +26,25 @@ export async function fetchAIInsights(
 ): Promise<LLMInsightsResponse> {
     const dataHash = hash(data);
 
-    // 1. Check Supabase Cache if userId is provided
-    if (userId) {
-        try {
-            const { data: cached, error } = await supabase
-                .from("ai_insights_cache")
-                .select("insight_data")
-                .eq("user_id", userId)
-                .eq("data_hash", dataHash)
-                .single();
+    // 1. Fetch from Backend Proxy (Backend handles cache and quota)
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
 
-            if (cached && !error) {
-                console.log("Supabase cache hit for insights");
-                return cached.insight_data as LLMInsightsResponse;
-            }
-        } catch (e) {
-            console.warn("Supabase cache check failed", e);
-        }
-    }
-
-    // 2. Fetch from Backend Proxy
     const res = await fetch(`${BACKEND_URL}/api/insights`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data, metrics }),
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ data, metrics, dataHash }),
     });
 
     if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(err.error ?? `Backend responded with ${res.status}`);
+        throw new Error(err.message || err.error || `Backend responded with ${res.status}`);
     }
 
     const result = await res.json() as LLMInsightsResponse;
-
-    // 3. Save to Supabase Cache if userId is provided
-    if (userId && result.sections) {
-        supabase.from("ai_insights_cache").upsert({
-            user_id: userId,
-            data_hash: dataHash,
-            insight_data: result,
-            created_at: new Date().toISOString()
-        }).then(({ error }) => {
-            if (error) console.error("Failed to save insights to Supabase cache", error);
-        });
-    }
 
     return result;
 }
