@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 import hash from "object-hash";
 import type { FinancialData, FinancialMetrics } from "@/types/finance";
 
-const isDev = import.meta.env.VITE_ENV;
+const isDev = import.meta.env.VITE_ENV === 'dev';
 const BACKEND_URL = isDev ? "http://localhost:3001" : import.meta.env.VITE_API_URL;
 
 export interface InsightSection {
