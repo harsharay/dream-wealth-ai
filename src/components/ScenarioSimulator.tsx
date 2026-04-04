@@ -745,7 +745,6 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                   <div 
                     key={i} 
                     className={`group relative flex flex-col bg-background border-4 border-foreground p-8 rounded-xl transition-all duration-300 overflow-hidden ${isDisabled ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] cursor-pointer'}`} 
-                    onClick={() => !isDisabled && selectPath(rec)}
                   >
                     {/* Vision Banner */}
                     <div className={`absolute top-0 left-0 right-0 text-background text-[10px] font-black uppercase py-2 text-center tracking-widest translate-y-0 transition-colors ${isActive ? 'bg-success' : 'bg-foreground group-hover:bg-primary'}`}>
@@ -774,7 +773,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                     </div>
 
                     <button 
-                      onClick={() => selectPath(rec)}
+                      onClick={() => !isDisabled && selectPath(rec)}
                       disabled={isDisabled}
                       className={`relative z-10 mt-auto w-full py-5 border-4 border-foreground font-black uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2 ${isActive ? 'bg-success text-success-foreground' : 'bg-foreground text-background group-hover:bg-primary group-hover:text-foreground nb-button'}`}
                     >
