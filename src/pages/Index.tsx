@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthForm } from "@/components/AuthForm";
 import { toast } from "sonner";
 import type { FinancialData } from "@/types/finance";
+import { saveFinancialRecords, loadFinancialRecords } from "@/lib/llm-service";
 import { calculateMetrics, emptyFinancialData } from "@/lib/financial-engine";
 import { HealthScoreGauge } from "@/components/HealthScoreGauge";
 import { MetricCards } from "@/components/MetricCards";
@@ -13,6 +14,9 @@ import { WarningsPanel } from "@/components/WarningsPanel";
 import { FinancialForm } from "@/components/FinancialForm";
 import { AIInsightsPanel } from "@/components/AIInsightsPanel";
 import { ScenarioSimulator } from "@/components/ScenarioSimulator";
+import { SimulatorLockScreen } from "@/components/SimulatorLockScreen";
+import { ProUpgradeModal } from "@/components/ProUpgradeModal";
+import { ActionTracker } from "@/components/ActionTracker";
 import { PremiumUpsell } from "@/components/PremiumUpsell";
 import {
   LayoutDashboard,
@@ -47,6 +51,7 @@ const Index = () => {
   const [dashboardTab, setDashboardTab] = useState<DashboardTab | null>(null);
   const [fetchingData, setFetchingData] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [activeMissionId, setActiveMissionId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const stored = localStorage.getItem('theme');
@@ -54,6 +59,30 @@ const Index = () => {
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
   const fetchedRef = useRef(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+
+  // Fetch data from Supabase on load
+  const fetchData = useCallback(async () => {
+    if (!user || fetchedRef.current) return;
+
+    setFetchingData(true);
+    try {
+      const data = await loadFinancialRecords();
+      if (data) {
+        setFinancialData(data);
+        setDashboardTab("overview");
+        fetchedRef.current = true;
+      }
+    } catch (err) {
+      console.warn("Fetch error or no records:", err);
+    } finally {
+      setFetchingData(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchData();
+  }, [user, fetchData]);
 
   // Apply theme class
   useEffect(() => {
@@ -70,79 +99,17 @@ const Index = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [dashboardTab]);
 
-  // Auto-reset state when user changes to prevent cross-account data leakage (P0)
-  useEffect(() => {
-    if (!user) {
-      setFinancialData(null);
-      fetchedRef.current = false;
-      setDashboardTab(null);
-    } else {
-      // If user changed but we still have old data from previous user
-      // (This can happen in some SPA transitions)
-      setFinancialData(null);
-      fetchedRef.current = false;
-      fetchData();
-    }
-  }, [user?.id]); // Only trigger on ID change to avoid unnecessary resets on metadata updates
-
-  // Fetch data from Supabase on load - Optimized to prevent redundant calls
-  const fetchData = async () => {
-    if (!user || fetchedRef.current) return;
-
-    setFetchingData(true);
-    try {
-      const { data, error } = await supabase
-        .from("financial_records")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .single();
-
-      if (data && !error) {
-        setFinancialData({
-          monthlyIncome: data.monthly_income,
-          expenses: data.expenses as any,
-          assets: data.assets as any,
-          liabilities: data.liabilities as any,
-          riskAppetite: data.risk_appetite as any,
-        });
-        setDashboardTab("overview");
-        fetchedRef.current = true;
-      }
-    } catch (err) {
-      console.warn("Fetch error or no records:", err);
-    } finally {
-      setFetchingData(false);
-    }
-  };
-
-  useEffect(() => {
-    if (user) fetchData();
-  }, [user?.id]); // Consolidate fetching logic
-
   const handleSaveData = async (data: FinancialData) => {
     if (!user) return;
 
     try {
-      const { error } = await supabase.from("financial_records").upsert({
-        user_id: user.id,
-        monthly_income: data.monthlyIncome,
-        expenses: data.expenses,
-        assets: data.assets,
-        liabilities: data.liabilities,
-        risk_appetite: data.riskAppetite,
-        updated_at: new Date().toISOString(),
-      });
-
-      if (error) throw error;
-
+      await saveFinancialRecords(data);
       setFinancialData(data);
       setIsEditing(false);
       setDashboardTab("overview");
-      toast.success("Coordinates updated, Pilot!");
-    } catch (error: any) {
-      toast.error("Telemetry failure: " + error.message);
+      toast.success("Coordinates updated securely, Pilot!");
+    } catch (error: unknown) {
+      toast.error("Telemetry failure: " + (error instanceof Error ? error.message : "Unknown error"));
     }
   };
 
@@ -163,12 +130,10 @@ const Index = () => {
     }
     setFinancialData(null);
     setIsEditing(false);
-    fetchedRef.current = false; // Allow fresh fetch if they change their mind
+    fetchedRef.current = false;
     setIsMobileMenuOpen(false);
   };
 
-  // Show loading state if we are initially authenticating OR fetching first-time data
-  // We check !user for authLoading to prevent full-screen unmounts on mobile app switch (session refreshes)
   if ((authLoading && !user) || (fetchingData && !fetchedRef.current)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
@@ -180,7 +145,6 @@ const Index = () => {
     );
   }
 
-  // Show login if not authenticated
   if (!user) {
     return (
       <div className="min-h-screen bg-background p-4 flex flex-col items-center">
@@ -203,7 +167,6 @@ const Index = () => {
     );
   }
 
-  // Show input form if no data or explicitly editing
   if (!financialData || isEditing) {
     return (
       <div className="min-h-screen bg-background p-4 flex flex-col items-center">
@@ -261,9 +224,13 @@ const Index = () => {
   const metrics = calculateMetrics(financialData);
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-      {/* Header */}
-      <header className="glass-header p-4 md:px-8">
+    <div className={`min-h-screen pb-20 relative ${theme === 'light' ? '' : 'bg-background'}`}>
+      {/* Star Background Overlay */}
+      <div className="absolute inset-0 z-0 opacity-20 pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+CiAgPHJlY3Qgd2lkdGg9IjIwIiBoZWlnaHQ9IjIwIiBmaWxsPSJub25lIj48L3JlY3Q+CiAgPGNpcmNsZSBjeD0iMiIgY3k9IjIiIHI9IjEiIGZpbGw9IiNmZmZmZmYiPjwvY2lyY2xlPgo8L3N2Zz4=')] bg-repeat" />
+      
+      <div className="relative z-10">
+        {/* Header */}
+        <header className="glass-header p-4 md:px-8">
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="flex items-center justify-between w-full lg:w-auto">
             <div className="flex items-center gap-3">
@@ -274,9 +241,10 @@ const Index = () => {
               <div>
                 <h1 className="font-sans text-2xl font-bold text-foreground leading-tight">WealthPilot</h1>
                 {!isPaidUser && (
-                  <button onClick={() => {
-                    // upgradeToPro();
-                  }} className="text-[10px] font-black uppercase text-primary hover:underline flex items-center gap-1">
+                  <button 
+                    onClick={() => setIsUpgradeModalOpen(true)} 
+                    className="text-[10px] font-black uppercase text-primary hover:underline flex items-center gap-1"
+                  >
                     Upgrade to Pro <ChevronUp className="w-2 h-2" />
                   </button>
                 )}
@@ -411,28 +379,16 @@ const Index = () => {
 
         {dashboardTab === "simulator" && (
           <div className="animate-in fade-in slide-in-from-right-4 duration-500 relative">
-            {!isPaidUser && (
-              <div className="absolute inset-0 z-10 backdrop-blur-[2px] bg-background/40 flex items-center justify-center p-6 border-4 border-dashed border-foreground/10 rounded-3xl">
-                <div className="nb-card max-w-md text-center p-8 bg-card shadow-[8px 8px 0px 0px_rgba(0,0,0,1)]">
-                  <div className="w-16 h-16 bg-accent/20 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Lock className="w-8 h-8 text-accent" />
-                  </div>
-                  <h3 className="text-2xl font-black text-foreground mb-3">Simulator is locked</h3>
-                  <p className="text-muted-foreground font-medium mb-8">
-                    Upgrade to **WealthPilot Pro** to run unlimited "What If" scenarios and test your financial strategies.
-                  </p>
-                  <button onClick={e => {
-                    // e.preventDefault();
-                    // upgradeToPro();
-                  }} className="nb-button w-full">
-                    {/* Unlock Now — ₹999/yr */}
-                    Coming Soon
-                  </button>
-                </div>
-              </div>
-            )}
-            <div className={!isPaidUser ? "opacity-30 pointer-events-none grayscale-[0.5]" : ""}>
-              <ScenarioSimulator data={financialData} />
+            <div className="space-y-8">
+              {!isPaidUser ? (
+                <SimulatorLockScreen />
+              ) : (
+                <ScenarioSimulator 
+                  data={financialData} 
+                  focusedMissionId={activeMissionId} 
+                  onMissionCleared={() => setActiveMissionId(null)}
+                />
+              )}
             </div>
           </div>
         )}
@@ -444,7 +400,9 @@ const Index = () => {
         )}
       </main>
     </div>
-  );
+    <ProUpgradeModal isOpen={isUpgradeModalOpen} onClose={() => setIsUpgradeModalOpen(false)} />
+  </div>
+);
 };
 
 export default Index;
