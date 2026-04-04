@@ -259,7 +259,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
       const res = await fetch(`${BACKEND_URL}/api/simulator/recommend`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ qna })
+        body: JSON.stringify({ qna, metrics, data })
       });
       if (!res.ok) throw new Error("Failed to generate paths");
       const result = await res.json();
@@ -744,7 +744,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                 return (
                   <div 
                     key={i} 
-                    className={`group relative flex flex-col bg-background border-4 border-foreground p-8 rounded-xl transition-all duration-300 overflow-hidden ${isDisabled ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:-translate-y-2 hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] cursor-pointer'}`} 
+                    className={`group relative flex flex-col bg-background border-4 border-foreground p-8 rounded-xl transition-all duration-300 overflow-hidden ${isDisabled ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] cursor-pointer'}`} 
                     onClick={() => !isDisabled && selectPath(rec)}
                   >
                     {/* Vision Banner */}
@@ -776,7 +776,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                     <button 
                       onClick={() => selectPath(rec)}
                       disabled={isDisabled}
-                      className={`relative z-10 mt-auto w-full py-5 border-4 border-foreground font-black uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2 ${isActive ? 'bg-success text-success-foreground' : 'bg-foreground text-background group-hover:bg-primary group-hover:text-foreground'}`}
+                      className={`relative z-10 mt-auto w-full py-5 border-4 border-foreground font-black uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2 ${isActive ? 'bg-success text-success-foreground' : 'bg-foreground text-background group-hover:bg-primary group-hover:text-foreground nb-button'}`}
                     >
                        {isActive ? "Currently Active - Resume" : isDisabled ? "Locked" : "Accept specialization"} <ArrowRight className="w-4 h-4" />
                     </button>
