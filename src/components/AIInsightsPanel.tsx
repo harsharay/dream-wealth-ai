@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import hash from "object-hash";
 import { useAuth } from "@/contexts/AuthContext";
 import type { FinancialMetrics, FinancialData } from "@/types/finance";
-import { Sparkles, Loader2, WifiOff } from "lucide-react";
+import { Sparkles, Loader2, WifiOff, History, ChevronLeft, ChevronRight } from "lucide-react";
 import { fetchAIInsights, type InsightSection } from "@/lib/llm-service";
 import { generateFallbackInsights } from "@/lib/financial-engine";
-const ENV = import.meta.env.VITE_ENV;
+import { format } from "date-fns";
+
+const isDev = import.meta.env.VITE_ENV === 'dev';
+const BACKEND_URL = isDev ? "http://localhost:3001" : (import.meta.env.VITE_API_URL || "http://localhost:3001");
 
 interface AIInsightsPanelProps {
   metrics: FinancialMetrics;
@@ -14,125 +16,139 @@ interface AIInsightsPanelProps {
 
 type Status = "loading" | "success" | "error";
 
+interface HistoryEntry {
+  insight_data: { sections: InsightSection[], warnings: string[] };
+  created_at: string;
+}
+
 export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
   const { user } = useAuth();
   const [sections, setSections] = useState<InsightSection[]>([]);
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState<string>("");
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(0); // 0 = latest, 1 = older, etc
 
-  const cacheKey = `wealthpilot_insights_${hash(data)}`;
+  const fetchHistory = async () => {
+    if (!user) return;
+    try {
+      const { data: { session } } = await import("@/lib/supabase").then(m => m.supabase.auth.getSession());
+      const res = await fetch(`${BACKEND_URL}/api/insights/history`, {
+        headers: { "Authorization": `Bearer ${session?.access_token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(data);
+      }
+    } catch(err) {
+      console.error("Could not fetch insight history", err);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
-
-    // Check localStorage first (local fast cache)
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        const actualData = parsed.data || parsed;
-        if (actualData && actualData.sections) {
-          setSections(actualData.sections);
-          setStatus("success");
-          return;
-        }
-      } catch (e) {
-        console.error("Failed to parse cached insights", e);
-      }
-    }
-
+    
     setStatus("loading");
     setSections([]);
 
-    if (ENV === "dev") {
-      // @ts-ignore - generateInsights is a dev helper defined at the bottom
-      setSections(generateInsights(metrics, data));
+    if (isDev) {
+      setSections(generateFallbackInsights(metrics, data));
       setStatus("success");
       return;
     }
 
-    fetchAIInsights(data, metrics, user?.id)
+    fetchAIInsights(data, metrics)
       .then((result) => {
         if (cancelled) return;
         setSections(result.sections);
         setStatus("success");
-        // Save to local cache too
-        localStorage.setItem(cacheKey, JSON.stringify({
-          data: result,
-          timestamp: Date.now(),
-          version: 1
-        }));
+        fetchHistory(); // fetch history seamlessly after current load
       })
       .catch((err: Error) => {
         if (cancelled) return;
         console.warn("LLM fetch failed, using fallback:", err.message);
         setErrorMsg(err.message);
-        // Graceful fallback to static insights
         setSections(generateFallbackInsights(metrics, data));
         setStatus("error");
+        fetchHistory(); // We try to fetch history anyway
       });
 
     return () => { cancelled = true; };
-    // Re-fetch if financial data changes or user logs in
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(data), JSON.stringify(metrics), user?.id]);
+  }, [JSON.stringify(data), JSON.stringify(metrics), user]);
 
+  const displayedSections = historyIndex === 0 ? sections : history[historyIndex - 1]?.insight_data.sections;
 
   const colors = ["bg-accent/20", "bg-secondary/20", "bg-primary/20", "bg-success/20"];
 
   return (
     <div className="nb-card">
-      <div className="flex items-center justify-between gap-2 mb-6">
+      <div className="flex items-center justify-between gap-2 mb-6 flex-wrap">
         <div className="flex items-center gap-2">
           <div
-            className="w-8 h-8 rounded-lg bg-secondary border-2 border-foreground flex items-center justify-center"
-            style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}
+            className="w-8 h-8 rounded-lg bg-secondary border-2 border-foreground flex items-center justify-center nb-shadow"
           >
             <Sparkles className="w-4 h-4 text-foreground" />
           </div>
-          <h3 className="font-sans font-bold text-foreground text-lg">
+          <h3 className="font-sans font-bold text-foreground text-lg flex items-center gap-2">
             AI Financial Diagnosis
+            {historyIndex > 0 && <span className="text-xs font-mono bg-warning/20 text-warning px-2 py-0.5 rounded-full border border-warning/50">Historical</span>}
           </h3>
         </div>
 
-        {status === "loading" && (
-          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            Analyzing with Gemini…
-          </div>
-        )}
-        {status === "error" && (
-          <div
-            className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1"
-            title={errorMsg}
-          >
-            <WifiOff className="w-3.5 h-3.5" />
-            {errorMsg.includes("429") ? "Too many requests — try again in 15m" : "Fallback mode — backend offline"}
-          </div>
-        )}
-        {status === "success" && (
-          <div className="flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-md px-2 py-1">
-            <Sparkles className="w-3 h-3" />
-            Gemini AI
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {history.length > 0 && (
+             <div className="flex items-center gap-2 bg-muted p-1 rounded-lg border-2 border-foreground">
+               <button 
+                 disabled={historyIndex >= history.length} 
+                 onClick={() => setHistoryIndex(v => v + 1)}
+                 className="p-1 hover:bg-foreground hover:text-background rounded transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-foreground"
+                 title="Older Insights"
+               >
+                 <ChevronLeft className="w-4 h-4" />
+               </button>
+               <span className="text-[10px] font-black uppercase w-16 text-center text-muted-foreground font-mono">
+                 {historyIndex === 0 ? "Latest" : format(new Date(history[historyIndex - 1].created_at), "MMM d")}
+               </span>
+               <button 
+                 disabled={historyIndex === 0} 
+                 onClick={() => setHistoryIndex(v => v - 1)}
+                 className="p-1 hover:bg-foreground hover:text-background rounded transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-foreground"
+                 title="Newer Insights"
+               >
+                 <ChevronRight className="w-4 h-4" />
+               </button>
+             </div>
+          )}
+
+          {status === "loading" && (
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Analyzing...
+            </div>
+          )}
+          {status === "error" && (
+            <div className="flex items-center gap-1.5 text-xs font-bold text-danger bg-danger/10 border border-danger/30 rounded-md px-2 py-1">
+              <WifiOff className="w-3.5 h-3.5" />
+              Fallback Mode
+            </div>
+          )}
+          {status === "success" && historyIndex === 0 && (
+            <div className="flex items-center gap-1.5 text-xs font-bold text-success bg-success/10 border border-success/30 rounded-md px-2 py-1">
+              <Sparkles className="w-3 h-3 text-success" />
+              Gemini 2.0
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Loading skeleton */}
       {status === "loading" && (
         <div className="space-y-4">
           {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
-              className={`relative overflow-hidden rounded-lg p-4 border-2 border-foreground/30 ${colors[(i - 1) % colors.length]}`}
-              style={{
-                boxShadow: "4px 4px 0px 0px hsl(var(--foreground))",
-              }}
+              className={`relative overflow-hidden rounded-lg p-4 border-2 border-foreground/30 ${colors[(i - 1) % colors.length]} nb-shadow`}
             >
-              {/* SHIMMER LAYER: Extra vibrant for Neobrutalism */}
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-shimmer" />
-
-              {/* CONTENT */}
               <div className="relative z-10">
                 <div className="h-3 w-28 bg-foreground/30 rounded mb-4 animate-bounce-slow" />
                 <div className="space-y-2">
@@ -145,23 +161,25 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
         </div>
       )}
 
-      {/* Insight sections */}
-      {status !== "loading" && sections.length > 0 && (
+      {status !== "loading" && displayedSections && displayedSections.length > 0 && (
         <div className="space-y-6">
-          {sections.map((section, i) => (
+          {displayedSections.map((section, i) => (
             <div
               key={i}
-              className={`rounded-lg p-4 border-2 border-foreground ${section.bgColor}`}
-              style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}
+              className={`rounded-lg p-4 border-2 border-foreground ${section.bgColor} nb-shadow-sm`}
             >
-              <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3">
-                {section.emoji} {section.title}
+              <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3 flex items-center gap-2">
+                <span>{section.emoji}</span> {section.title}
               </h4>
               <ul className="space-y-2">
                 {section.items.map((item, j) => (
                   <li key={j} className="text-sm text-foreground flex gap-2 font-medium">
                     <span className="shrink-0">{section.bullet}</span>
-                    {item}
+                    <span>
+                      {item.split(/(\*\*.*?\*\*)/g).map((part, k) => (
+                        part.startsWith('**') ? <strong key={k}>{part.slice(2, -2)}</strong> : part
+                      ))}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -171,52 +189,4 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
       )}
     </div>
   );
-}
-
-
-// DEV: Generate these insights from LLM 
-function generateInsights(metrics: FinancialMetrics, data: FinancialData) {
-  const sections = [];
-
-  const diagnosis: string[] = [];
-  if (metrics.healthScore >= 70) {
-    diagnosis.push("Your financial health is solid. You're in the top bracket — but there's always room to optimize.");
-  } else if (metrics.healthScore >= 40) {
-    diagnosis.push("Your finances are mediocre. Not terrible, but not where they should be. Time to get serious.");
-  } else {
-    diagnosis.push("Your financial health is in critical condition. Every month you delay action costs you real money.");
-  }
-  diagnosis.push(`Net worth of ${new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(metrics.netWorth)} with ${metrics.savingsRate.toFixed(0)}% savings rate.`);
-  sections.push({ title: "Diagnosis", items: diagnosis, emoji: "🩺", bullet: "→", bgColor: "bg-accent/20" });
-
-  const risks: string[] = [];
-  if (metrics.liquidityRatio < 1) risks.push("Insufficient emergency fund — you're one job loss away from financial crisis.");
-  if (data.liabilities.creditCardDebt > 0) risks.push("Active credit card debt is silently draining your wealth at 36%+ APR.");
-  if (metrics.debtToIncomeRatio > 40) risks.push("Dangerously high leverage. You're over-exposed to interest rate risk.");
-  if (risks.length === 0) risks.push("No critical risks detected. Stay disciplined.");
-  sections.push({ title: "Key Risks", items: risks, emoji: "⚠️", bullet: "✕", bgColor: "bg-danger/10" });
-
-  const opps: string[] = [];
-  if (data.assets.mutualFunds === 0 && data.assets.stocks === 0) {
-    opps.push("You have zero market exposure. Start a SIP in a Nifty 50 index fund today.");
-  }
-  if (metrics.savingsRate > 20 && data.assets.realEstate === 0) {
-    opps.push("Strong savings rate but no real estate. Consider REITs for diversification.");
-  }
-  if (data.riskAppetite === "high" && data.assets.stocks < data.assets.bankBalance) {
-    opps.push("Your risk appetite is high but most money sits in the bank. Reallocate to equities.");
-  }
-  if (opps.length === 0) opps.push("Your allocation looks balanced. Focus on growing each bucket.");
-  sections.push({ title: "Missed Opportunities", items: opps, emoji: "💡", bullet: "★", bgColor: "bg-secondary/30" });
-
-  const actions: string[] = [];
-  if (data.liabilities.creditCardDebt > 0) actions.push("IMMEDIATE: Pay off credit card debt. This is priority #1.");
-  if (metrics.liquidityRatio < 1) actions.push("Build emergency fund to cover 6 months of expenses.");
-  actions.push("Automate savings — transfer 20% of income on salary day.");
-  if (data.assets.mutualFunds > 0 || data.assets.stocks > 0) {
-    actions.push("Review portfolio quarterly. Rebalance if any single asset exceeds 40% allocation.");
-  }
-  sections.push({ title: "Action Plan", items: actions, emoji: "🎯", bullet: "→", bgColor: "bg-accent/10" });
-
-  return sections;
 }

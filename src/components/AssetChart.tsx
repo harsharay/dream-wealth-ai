@@ -6,7 +6,13 @@ interface AssetChartProps {
   assets: Assets;
 }
 
-const COLORS = ["hsl(158, 64%, 42%)", "hsl(200, 80%, 55%)", "hsl(45, 93%, 58%)", "hsl(258, 90%, 66%)", "hsl(340, 80%, 60%)"];
+const COLORS = [
+  "hsl(var(--accent))",
+  "hsl(var(--primary))",
+  "hsl(var(--secondary))",
+  "hsl(var(--destructive))",
+  "hsl(200, 80%, 55%)"
+];
 const LABELS: Record<keyof Assets, string> = {
   bankBalance: "Bank",
   gold: "Gold",
@@ -31,6 +37,41 @@ export function AssetChart({ assets }: AssetChartProps) {
     );
   }
 
+  const RADIAN = Math.PI / 180;
+  const renderCustomizedLabel = ({
+    cx,
+    cy,
+    midAngle,
+    innerRadius,
+    outerRadius,
+    percent,
+  }: {
+    cx: number;
+    cy: number;
+    midAngle: number;
+    innerRadius: number;
+    outerRadius: number;
+    percent: number;
+  }) => {
+    if (percent < 0.05) return null; // Hide for small slices
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="white"
+        className="text-[10px] font-black"
+        textAnchor="middle"
+        dominantBaseline="central"
+      >
+        {`${(percent * 100).toFixed(0)}%`}
+      </text>
+    );
+  };
+
   return (
     <div className="nb-card">
       <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">
@@ -48,6 +89,8 @@ export function AssetChart({ assets }: AssetChartProps) {
             dataKey="value"
             stroke="hsl(var(--foreground))"
             strokeWidth={2}
+            label={renderCustomizedLabel}
+            labelLine={false}
           >
             {data.map((_, index) => (
               <Cell key={index} fill={COLORS[index % COLORS.length]} />

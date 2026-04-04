@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts";
 import { formatCurrency } from "@/lib/financial-engine";
 import type { Liabilities } from "@/types/finance";
 
@@ -13,7 +13,12 @@ const LABELS: Record<keyof Liabilities, string> = {
   others: "Others",
 };
 
-const COLORS = ["hsl(200, 80%, 55%)", "hsl(258, 90%, 66%)", "hsl(0, 84%, 60%)", "hsl(45, 93%, 58%)"];
+const COLORS = [
+  "hsl(var(--primary))",
+  "hsl(var(--secondary))",
+  "hsl(var(--destructive))",
+  "hsl(var(--accent))"
+];
 
 export function LiabilityChart({ liabilities }: LiabilityChartProps) {
   const data = (Object.entries(liabilities) as [keyof Liabilities, number][])
@@ -53,6 +58,7 @@ export function LiabilityChart({ liabilities }: LiabilityChartProps) {
             tick={{ fill: "hsl(var(--foreground))", fontSize: 11, fontWeight: 700 }}
           />
           <Tooltip
+            cursor={false}
             formatter={(val: number) => formatCurrency(val)}
             contentStyle={{
               backgroundColor: "hsl(var(--card))",
@@ -69,9 +75,17 @@ export function LiabilityChart({ liabilities }: LiabilityChartProps) {
             strokeWidth={2}
             minPointSize={4}
           >
-            {data.map((entry, i) => (
-              <Cell key={i} fill={entry.color} />
-            ))}
+            <Cell key={0} fill={COLORS[0]} />
+            <Cell key={1} fill={COLORS[1]} />
+            <Cell key={2} fill={COLORS[2]} />
+            <Cell key={3} fill={COLORS[3]} />
+            <LabelList 
+              dataKey="value" 
+              position="insideRight" 
+              offset={10}
+              formatter={(v: number) => v > 0 ? `₹${(v / 1000).toFixed(0)}k` : ""}
+              style={{ fill: "white", fontSize: 10, fontWeight: "black" }}
+            />
           </Bar>
         </BarChart>
       </ResponsiveContainer>
