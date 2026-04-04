@@ -34,13 +34,10 @@ export function ProUpgradeModal({ isOpen, onClose }: ProUpgradeModalProps) {
                 {/* Close Button */}
                 <button 
                   onClick={onClose}
-                  className="absolute top-4 right-4 p-2 hover:bg-muted border-2 border-transparent hover:border-foreground rounded-lg transition-all"
+                  className="absolute top-4 right-4 p-2 hover:bg-muted border-2 border-transparent hover:border-foreground rounded-lg transition-all cursor-pointer z-50"
                 >
                   <X className="w-5 h-5" />
                 </button>
-
-                {/* Decorative Elements */}
-                <div className="absolute top-0 right-0 w-32 h-32 bg-primary/20 rounded-full blur-3xl -mr-16 -mt-16" />
                 
                 <div className="relative z-10 flex flex-col items-center">
                     <div className="w-16 h-16 rounded-xl bg-primary border-4 border-foreground flex items-center justify-center mb-6 nb-shadow-sm rotate-3">
