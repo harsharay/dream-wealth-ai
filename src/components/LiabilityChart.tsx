@@ -58,14 +58,26 @@ export function LiabilityChart({ liabilities }: LiabilityChartProps) {
             tick={{ fill: "hsl(var(--foreground))", fontSize: 11, fontWeight: 700 }}
           />
           <Tooltip
-            cursor={false}
+            cursor={{ fill: "transparent" }}
             formatter={(val: number) => formatCurrency(val)}
             contentStyle={{
               backgroundColor: "hsl(var(--card))",
               borderColor: "hsl(var(--foreground))",
               borderRadius: "8px",
               boxShadow: "4px 4px 0px 0px hsl(var(--foreground))",
-              color: "hsl(var(--foreground))"
+              padding: "8px 12px",
+            }}
+            itemStyle={{
+              color: "hsl(var(--foreground))",
+              fontSize: "12px",
+              fontWeight: "bold",
+            }}
+            labelStyle={{
+              color: "hsl(var(--muted-foreground))",
+              fontSize: "10px",
+              fontWeight: "bold",
+              marginBottom: "4px",
+              textTransform: "uppercase",
             }}
           />
           <Bar
@@ -81,10 +93,10 @@ export function LiabilityChart({ liabilities }: LiabilityChartProps) {
             <Cell key={3} fill={COLORS[3]} />
             <LabelList 
               dataKey="value" 
-              position="insideRight" 
+              position="right" 
               offset={10}
               formatter={(v: number) => v > 0 ? `₹${(v / 1000).toFixed(0)}k` : ""}
-              style={{ fill: "white", fontSize: 10, fontWeight: "black" }}
+              style={{ fill: "hsl(var(--foreground))", fontSize: 10, fontWeight: "900" }}
             />
           </Bar>
         </BarChart>

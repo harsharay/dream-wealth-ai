@@ -24,6 +24,7 @@ interface HistoryEntry {
 export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
   const { user } = useAuth();
   const [sections, setSections] = useState<InsightSection[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -53,6 +54,7 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
 
     if (isDev) {
       setSections(generateFallbackInsights(metrics, data));
+      setWarnings(["Keep an eye on your emergency fund.", "Market volatility is high."]);
       setStatus("success");
       return;
     }
@@ -61,6 +63,7 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
       .then((result) => {
         if (cancelled) return;
         setSections(result.sections);
+        setWarnings(result.warnings || []);
         setStatus("success");
         fetchHistory(); // fetch history seamlessly after current load
       })
@@ -77,6 +80,7 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
   }, [JSON.stringify(data), JSON.stringify(metrics), user]);
 
   const displayedSections = historyIndex === 0 ? sections : history[historyIndex - 1]?.insight_data.sections;
+  const displayedWarnings = historyIndex === 0 ? warnings : history[historyIndex - 1]?.insight_data.warnings;
 
   const colors = ["bg-accent/20", "bg-secondary/20", "bg-primary/20", "bg-success/20"];
 
@@ -185,6 +189,27 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
               </ul>
             </div>
           ))}
+
+          {/* Warnings Section */}
+          {displayedWarnings && displayedWarnings.length > 0 && (
+            <div className="mt-8 pt-6 border-t-2 border-dashed border-foreground/20">
+               <div className="border-foreground rounded-lg nb-shadow-sm">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-danger mb-4 flex items-center gap-2">
+                    <span className="animate-pulse text-lg">⚠️</span> Critical Alerts
+                  </h4>
+                  <ul className="space-y-3">
+                    {displayedWarnings.map((warning, idx) => (
+                      <li key={idx} className="flex items-start gap-3 group">
+                        <div className="w-1.5 h-1.5 rounded-full bg-danger mt-1.5 shrink-0 group-hover:scale-125 transition-transform" />
+                        <p className="text-sm font-bold text-foreground leading-relaxed">
+                          {warning}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+               </div>
+            </div>
+          )}
         </div>
       )}
     </div>

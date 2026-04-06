@@ -63,7 +63,7 @@ export function SimulatorLockScreen() {
                     </div>
 
                     {showCouponInput && (
-                        <form onSubmit={handleRedeem} className="w-full flex gap-2 animate-in slide-in-from-top-4 duration-300">
+                        <form onSubmit={handleRedeem} className="flex gap-2 animate-in slide-in-from-top-4 duration-300">
                             <input 
                                 type="text"
                                 placeholder="WP-000000-00"

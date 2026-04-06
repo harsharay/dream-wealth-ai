@@ -63,7 +63,8 @@ const Index = () => {
 
   // Fetch data from Supabase on load
   const fetchData = useCallback(async () => {
-    if (!user || fetchedRef.current) return;
+    // If we're already fetching, or we're in edit mode, or we've already fetched, don't sync.
+    if (!user || fetchedRef.current || isEditing) return;
 
     setFetchingData(true);
     try {
@@ -78,7 +79,7 @@ const Index = () => {
     } finally {
       setFetchingData(false);
     }
-  }, [user]);
+  }, [user, isEditing]);
 
   useEffect(() => {
     fetchData();
@@ -134,12 +135,14 @@ const Index = () => {
     setIsMobileMenuOpen(false);
   };
 
-  if ((authLoading && !user) || (fetchingData && !fetchedRef.current)) {
+  // The full-page "Authenticating" screen should only show on initial auth.
+  // Data synchronization should be non-blocking to prevent UI unmounting and data loss.
+  if (authLoading && !user) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        <p className="font-bold text-muted-foreground animate-pulse">
-          {authLoading && !user ? "Authenticating..." : "Synchronizing cloud data..."}
+        <p className="font-bold text-muted-foreground animate-pulse text-sm">
+          Authenticating Pilot...
         </p>
       </div>
     );
@@ -169,12 +172,22 @@ const Index = () => {
 
   if (!financialData || isEditing) {
     return (
-      <div className="min-h-screen bg-background p-4 flex flex-col items-center">
+      <div className="min-h-screen bg-background p-4 flex flex-col items-center relative overflow-hidden">
+        {fetchingData && (
+          <div className="absolute top-0 left-0 right-0 h-1 z-50 overflow-hidden bg-muted">
+            <div className="h-full bg-primary animate-progress-indeterminate shadow-[0_0_10px_rgba(var(--primary),0.5)]" />
+          </div>
+        )}
         <div className="w-full max-w-4xl flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary border-2 border-foreground flex items-center justify-center"
+            <div className="w-10 h-10 rounded-lg bg-primary border-2 border-foreground flex items-center justify-center relative"
               style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}>
               <Compass className="w-5 h-5 text-primary-foreground" />
+              {fetchingData && (
+                <div className="absolute -top-1 -right-1 bg-background border border-foreground rounded-full p-0.5">
+                  <Loader2 className="w-2.5 h-2.5 animate-spin text-primary" />
+                </div>
+              )}
             </div>
             <h1 className="font-sans text-2xl font-bold text-foreground">WealthPilot</h1>
           </div>
@@ -204,7 +217,7 @@ const Index = () => {
           <div className="mb-8 p-6 bg-accent/10 border-2 border-dashed border-foreground/20 rounded-xl relative overflow-hidden">
             <div className="relative z-10">
               <h2 className="text-2xl font-black text-foreground mb-1">
-                {isEditing ? "Modify Coordinates" : `Welcome, ${user.user_metadata.full_name || 'Pilot'}!`}
+                {isEditing ? "Modify the numbers" : `Welcome, ${user.user_metadata.full_name || 'Pilot'}!`}
               </h2>
               <p className="text-muted-foreground font-medium">
                 {isEditing
@@ -225,6 +238,11 @@ const Index = () => {
 
   return (
     <div className={`min-h-screen pb-20 relative ${theme === 'light' ? '' : 'bg-background'}`}>
+      {fetchingData && (
+        <div className="fixed top-0 left-0 right-0 h-1 z-[100] overflow-hidden bg-muted/20">
+          <div className="h-full bg-primary animate-progress-indeterminate shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
+        </div>
+      )}
       {/* Star Background Overlay */}
       <div className="absolute inset-0 z-0 opacity-20 pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+CiAgPHJlY3Qgd2lkdGg9IjIwIiBoZWlnaHQ9IjIwIiBmaWxsPSJub25lIj48L3JlY3Q+CiAgPGNpcmNsZSBjeD0iMiIgY3k9IjIiIHI9IjEiIGZpbGw9IiNmZmZmZmYiPjwvY2lyY2xlPgo8L3N2Zz4=')] bg-repeat" />
       
@@ -234,9 +252,14 @@ const Index = () => {
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="flex items-center justify-between w-full lg:w-auto">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary border-2 border-foreground flex items-center justify-center"
+              <div className="w-10 h-10 rounded-lg bg-primary border-2 border-foreground flex items-center justify-center relative"
                 style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}>
                 <Compass className="w-5 h-5 text-primary-foreground" />
+                {fetchingData && (
+                  <div className="absolute -top-1 -right-1 bg-background border border-foreground rounded-full p-0.5">
+                    <Loader2 className="w-2.5 h-2.5 animate-spin text-primary" />
+                  </div>
+                )}
               </div>
               <div>
                 <h1 className="font-sans text-2xl font-bold text-foreground leading-tight">WealthPilot</h1>
@@ -296,22 +319,22 @@ const Index = () => {
             </div>
           )}
 
-          <nav className="flex w-full lg:w-auto bg-muted p-1 rounded-xl border-2 border-foreground overflow-x-auto no-scrollbar justify-between lg:justify-start">
+          <nav className="grid grid-cols-3 lg:flex w-full lg:w-auto bg-muted p-1 rounded-xl border-2 border-foreground no-scrollbar gap-1">
             {DASHBOARD_TABS.map((tab) => {
               const isActive = dashboardTab === tab.id;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setDashboardTab(tab.id)}
-                  className={`flex items-center gap-2 px-2 lg:px-5 py-2 rounded-lg font-bold transition-all whitespace-nowrap ${isActive
+                  className={`flex items-center justify-center lg:justify-start gap-1.5 px-1.5 lg:px-5 py-2 rounded-lg font-bold transition-all whitespace-nowrap shrink-0 ${isActive
                     ? "bg-foreground text-background"
                     : "text-muted-foreground hover:text-foreground"
                     }`}
                 >
-                  <tab.icon className="w-4 h-4" />
-                  <span className="text-sm">{tab.label}</span>
+                  <tab.icon className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                  <span className="text-[10px] sm:text-xs lg:text-sm">{tab.label}</span>
                   {tab.premium && (
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${isPaidUser ? "bg-success/20 text-success border-success/30" : "bg-accent/20 border-foreground/30"} ${isActive ? "text-[white]" : "text-[black]"}`}>
+                    <span className={`text-[8px] lg:text-[9px] px-1 lg:px-1.5 py-0.5 rounded border ${isPaidUser ? "bg-success/20 text-success border-success/30" : "bg-accent/20 border-foreground/30"} ${isActive ? "text-[white]" : "text-[black]"}`}>
                       PRO
                     </span>
                   )}
