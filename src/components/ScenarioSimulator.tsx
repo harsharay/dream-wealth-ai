@@ -369,6 +369,15 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
 
   const chartData = generateChartData();
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+  if (textareaRef.current) {
+    textareaRef.current.style.height = 'auto';
+    textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+  }
+}, [currentInput]);
+
   return (
     <div className="relative border-4 border-foreground bg-card rounded-2xl overflow-hidden min-h-[500px] flex flex-col nb-shadow-lg" style={{
       boxShadow: "10px 10px 0px 0px hsl(var(--foreground))"
@@ -609,11 +618,11 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
 
       {/* Questions Phase */}
       {phase === "questions" && !loading && !isInitializing && questions.length > 0 && (
-        <div className="flex-1 flex flex-col p-8 z-10">
+        <div className="flex-1 flex flex-col p-8 pb-20 z-10">
           <div className="flex justify-between items-center mb-8 border-b-4 border-foreground/10 pb-4">
              <div className="flex flex-col">
                <span className="font-black text-muted-foreground uppercase tracking-widest text-xs">Encounter {currentQIndex + 1} / {questions.length}</span>
-               <span className="text-[10px] font-bold text-accent animate-pulse mt-1">Tip: Be descriptive for better quest suggestions!</span>
+               <span className="text-[10px] font-bold text-accent mt-1">Tip: Be descriptive for better quest suggestions!</span>
              </div>
              <div className="flex items-center gap-4">
                {/* <div className="flex gap-1 border-2 border-foreground rounded-lg p-1 bg-background">
@@ -654,7 +663,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
              </div>
           </div>
 
-          <div className="flex gap-1 border-2 border-foreground rounded-lg p-1 bg-background absolute" style={{width: 'fit-content', bottom: '20px'}}>
+          <div className="flex gap-1 border-2 border-foreground rounded-lg p-1 bg-background absolute w-fit bottom-[20px] right-[10px]">
                  <button 
                   onClick={async () => {
                     const { data: { session } } = await supabase.auth.getSession();
@@ -691,7 +700,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
               "{questions[currentQIndex]}"
             </h3>
             <div className="space-y-4">
-              <div className="relative">
+              {/* <div className="relative w-[max-content] md:w-auto">
                 <input 
                   type="text" 
                   value={currentInput}
@@ -705,12 +714,34 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                   onClick={submitAnswer}
                   disabled={!currentInput.trim()}
                   className="absolute right-[-70px] top-3 bottom-3 aspect-square bg-foreground text-background flex items-center justify-center rounded-lg hover:bg-accent disabled:opacity-50 transition-colors"
-                >
-                  <ArrowRight className="w-6 h-6" />
-                </button>
-              </div>
+                > */}
+                <div className="relative w-[max-content] md:w-auto">
+                  <textarea
+                    value={currentInput}
+                    ref={textareaRef}
+                    onChange={e => setCurrentInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        submitAnswer();
+                      }
+                    }}
+                    placeholder="Talk to the Pilot..."
+                    rows={1}
+                    className="w-full text-lg p-6 pr-16 rounded-xl border-4 border-foreground bg-background font-medium focus:outline-none focus:ring-4 focus:ring-accent/50 focus:border-accent transition-all nb-shadow-sm resize-none overflow-hidden max-h-[200px] overflow-y-auto"
+                    autoFocus
+                  />
+
+                  <button 
+                    onClick={submitAnswer}
+                    disabled={!currentInput.trim()}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 h-12 w-12 bg-foreground text-background flex items-center justify-center rounded-lg hover:bg-accent disabled:opacity-50 transition-colors"
+                  >
+                    <ArrowRight className="w-6 h-6" />
+                  </button>
+                </div>
               
-              <div className="flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200">
+              {/* <div className="flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200">
                 {["Saving for a home", "Retirement planning", "Emergency fund", "International trip", "Buying a car"].map(suggestion => (
                   <button
                     key={suggestion}
@@ -720,7 +751,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                     {suggestion}
                   </button>
                 ))}
-              </div>
+              </div> */}
             </div>
           </div>
         </div>
@@ -744,7 +775,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                 return (
                   <div 
                     key={i} 
-                    className={`group relative flex flex-col bg-background border-4 border-foreground p-8 rounded-xl transition-all duration-300 overflow-hidden ${isDisabled ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] cursor-pointer'}`} 
+                    className={`group relative flex flex-col bg-background border-4 border-foreground p-8 rounded-xl transition-all duration-300 overflow-hidden ${isDisabled ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]'}`} 
                   >
                     {/* Vision Banner */}
                     <div className={`absolute top-0 left-0 right-0 text-background text-[10px] font-black uppercase py-2 text-center tracking-widest translate-y-0 transition-colors ${isActive ? 'bg-success' : 'bg-foreground group-hover:bg-primary'}`}>

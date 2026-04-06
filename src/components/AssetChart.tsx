@@ -103,16 +103,28 @@ export function AssetChart({ assets }: AssetChartProps) {
               borderColor: "hsl(var(--foreground))",
               borderRadius: "8px",
               boxShadow: "4px 4px 0px 0px hsl(var(--foreground))",
-              color: "hsl(var(--foreground))"
+              padding: "8px 12px",
+            }}
+            itemStyle={{
+              color: "hsl(var(--foreground))",
+              fontSize: "12px",
+              fontWeight: "bold",
+            }}
+            labelStyle={{
+              color: "hsl(var(--muted-foreground))",
+              fontSize: "10px",
+              fontWeight: "bold",
+              marginBottom: "4px",
+              textTransform: "uppercase",
             }}
           />
         </PieChart>
       </ResponsiveContainer>
       <div className="flex flex-wrap gap-3 mt-2 justify-center">
         {data.map((item, i) => (
-          <div key={item.name} className="flex items-center gap-1.5 text-xs font-bold">
-            <div className="w-3 h-3 rounded-sm border-2 border-foreground" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-            <span className="text-muted-foreground">{item.name}</span>
+          <div key={item.name} className="flex items-center gap-1.5 text-[10px] font-bold">
+            <div className="w-2.5 h-2.5 rounded-sm border-[1.5px] border-foreground" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+            <span className="text-foreground/70 uppercase tracking-tighter">{item.name}</span>
           </div>
         ))}
       </div>
