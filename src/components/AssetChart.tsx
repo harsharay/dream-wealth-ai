@@ -28,11 +28,13 @@ export function AssetChart({ assets }: AssetChartProps) {
 
   if (data.length === 0) {
     return (
-      <div className="nb-card">
+      <div className="nb-card h-full min-h-[360px] flex flex-col">
         <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">
           Asset Allocation
         </h3>
-        <p className="text-muted-foreground text-sm text-center py-8">No assets recorded</p>
+        <p className="text-muted-foreground text-sm text-center py-8 flex-1 flex items-center justify-center">
+          No assets recorded
+        </p>
       </div>
     );
   }
@@ -73,11 +75,12 @@ export function AssetChart({ assets }: AssetChartProps) {
   };
 
   return (
-    <div className="nb-card">
+    <div className="nb-card h-full min-h-[360px] flex flex-col">
       <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">
         Asset Allocation
       </h3>
-      <ResponsiveContainer width="100%" height={220}>
+      <div className="flex-1 min-h-[220px]">
+        <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
             data={data}
@@ -119,7 +122,8 @@ export function AssetChart({ assets }: AssetChartProps) {
             }}
           />
         </PieChart>
-      </ResponsiveContainer>
+        </ResponsiveContainer>
+      </div>
       <div className="flex flex-wrap gap-3 mt-2 justify-center">
         {data.map((item, i) => (
           <div key={item.name} className="flex items-center gap-1.5 text-[10px] font-bold">
