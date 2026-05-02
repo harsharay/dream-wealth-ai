@@ -3,11 +3,15 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthForm } from "@/components/AuthForm";
 import { toast } from "sonner";
-import type { FinancialData } from "@/types/finance";
+import type { BackendFinancialMetrics, FinancialData } from "@/types/finance";
 import { saveFinancialRecords, loadFinancialRecords } from "@/lib/llm-service";
 import { calculateMetrics, emptyFinancialData } from "@/lib/financial-engine";
 import { HealthScoreGauge } from "@/components/HealthScoreGauge";
+import { EmergencyBufferGauge } from "@/components/EmergencyBufferGauge";
+import { FIProgressWidget } from "@/components/FIProgressWidget";
+import { EmiStressGauge } from "@/components/EmiStressGauge";
 import { MetricCards } from "@/components/MetricCards";
+import { MoneyFlowSankey } from "@/components/MoneyFlowSankey";
 import { AssetChart } from "@/components/AssetChart";
 import { LiabilityChart } from "@/components/LiabilityChart";
 import { WarningsPanel } from "@/components/WarningsPanel";
@@ -45,9 +49,49 @@ const DASHBOARD_TABS: { id: DashboardTab; label: string; icon: React.ElementType
   { id: "simulator", label: "Simulator", icon: FlaskConical, premium: true },
 ];
 
+const EMPTY_BACKEND_METRICS: BackendFinancialMetrics = {
+  emergencyBufferMonths: 0,
+  fiMetricAvailable: false,
+  fiRatio: null,
+  targetRetirementCorpus: null,
+  investedAssets: null,
+  estimatedRetirementAge: null,
+  emiStressRatio: 0,
+};
+
+interface PersistedDashboardState {
+  financialData: FinancialData | null;
+  backendMetrics: BackendFinancialMetrics;
+  dashboardTab: DashboardTab | null;
+  isEditing: boolean;
+  onboardingMode: "welcome" | "chat" | "form" | null;
+  chatDraftData: FinancialData | null;
+  activeMissionId: string | null;
+}
+
+const dashboardStateKey = (userId: string) => `wealthpilot_dashboard_state_${userId}`;
+
+const loadPersistedDashboardState = (userId: string): PersistedDashboardState | null => {
+  try {
+    const raw = localStorage.getItem(dashboardStateKey(userId));
+    return raw ? (JSON.parse(raw) as PersistedDashboardState) : null;
+  } catch {
+    return null;
+  }
+};
+
+const savePersistedDashboardState = (userId: string, state: PersistedDashboardState) => {
+  try {
+    localStorage.setItem(dashboardStateKey(userId), JSON.stringify(state));
+  } catch {
+    // Ignore persistence failures (private mode/storage quota).
+  }
+};
+
 const Index = () => {
   const { user, loading: authLoading, isPaidUser, signOut, upgradeToPro } = useAuth();
   const [financialData, setFinancialData] = useState<FinancialData | null>(null);
+  const [backendMetrics, setBackendMetrics] = useState<BackendFinancialMetrics>(EMPTY_BACKEND_METRICS);
   const [dashboardTab, setDashboardTab] = useState<DashboardTab | null>(null);
   const [fetchingData, setFetchingData] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -62,17 +106,40 @@ const Index = () => {
   });
   const fetchedRef = useRef(false);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [hasHydratedLocalState, setHasHydratedLocalState] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setHasHydratedLocalState(false);
+      return;
+    }
+
+    const savedState = loadPersistedDashboardState(user.id);
+    if (savedState) {
+      setFinancialData(savedState.financialData);
+      setBackendMetrics(savedState.backendMetrics ?? EMPTY_BACKEND_METRICS);
+      setDashboardTab(savedState.dashboardTab);
+      setIsEditing(savedState.isEditing);
+      setOnboardingMode(savedState.onboardingMode);
+      setChatDraftData(savedState.chatDraftData);
+      setActiveMissionId(savedState.activeMissionId);
+      fetchedRef.current = !!savedState.financialData;
+    }
+
+    setHasHydratedLocalState(true);
+  }, [user?.id]);
 
   // Fetch data from Supabase on load
   const fetchData = useCallback(async () => {
     // If we're already fetching, or we're in edit mode, or we've already fetched, don't sync.
-    if (!user || fetchedRef.current || isEditing) return;
+    if (!user || !hasHydratedLocalState || fetchedRef.current || isEditing) return;
 
     setFetchingData(true);
     try {
-      const data = await loadFinancialRecords();
-      if (data) {
-        setFinancialData(data);
+      const payload = await loadFinancialRecords();
+      if (payload) {
+        setFinancialData(payload.data);
+        setBackendMetrics({ ...EMPTY_BACKEND_METRICS, ...(payload.metrics || {}) });
         setDashboardTab("overview");
         fetchedRef.current = true;
       } else {
@@ -85,11 +152,35 @@ const Index = () => {
     } finally {
       setFetchingData(false);
     }
-  }, [user, isEditing]);
+  }, [user, isEditing, hasHydratedLocalState]);
 
   useEffect(() => {
     fetchData();
   }, [user, fetchData]);
+
+  useEffect(() => {
+    if (!user?.id || !hasHydratedLocalState) return;
+
+    savePersistedDashboardState(user.id, {
+      financialData,
+      backendMetrics,
+      dashboardTab,
+      isEditing,
+      onboardingMode,
+      chatDraftData,
+      activeMissionId,
+    });
+  }, [
+    user?.id,
+    hasHydratedLocalState,
+    financialData,
+    backendMetrics,
+    dashboardTab,
+    isEditing,
+    onboardingMode,
+    chatDraftData,
+    activeMissionId,
+  ]);
 
   // Apply theme class
   useEffect(() => {
@@ -110,8 +201,9 @@ const Index = () => {
     if (!user) return;
 
     try {
-      await saveFinancialRecords(data);
+      const metricsFromBackend = await saveFinancialRecords(data);
       setFinancialData(data);
+      setBackendMetrics({ ...EMPTY_BACKEND_METRICS, ...(metricsFromBackend || {}) });
       setIsEditing(false);
       setOnboardingMode(null);
       setChatDraftData(null);
@@ -146,6 +238,7 @@ const Index = () => {
       return;
     }
     setFinancialData(null);
+    setBackendMetrics(EMPTY_BACKEND_METRICS);
     setIsEditing(false);
     setOnboardingMode("welcome");
     setChatDraftData(null);
@@ -494,22 +587,46 @@ const Index = () => {
         {dashboardTab === "overview" && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-              <div className="lg:col-span-4 flex w-full">
-                <div className="w-full">
-                  <HealthScoreGauge score={metrics.healthScore} />
-                </div>
-              </div>
-              <div className="lg:col-span-8 flex">
+              <div className="lg:col-span-12">
                 <MetricCards metrics={metrics} />
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <AssetChart assets={financialData.assets} />
-              <LiabilityChart liabilities={financialData.liabilities} />
-            </div>
+              <div className="lg:col-span-6">
+                <HealthScoreGauge score={metrics.healthScore} />
+              </div>
+              <div className="lg:col-span-6">
+                <EmergencyBufferGauge emergencyBufferMonths={backendMetrics.emergencyBufferMonths} />
+              </div>
 
-            <WarningsPanel warnings={metrics.warnings} setRedirect={() => setDashboardTab("insights")} />
+              {backendMetrics.fiMetricAvailable && backendMetrics.fiRatio !== null && backendMetrics.investedAssets !== null && backendMetrics.targetRetirementCorpus !== null && (
+                <div className="lg:col-span-6">
+                  <FIProgressWidget
+                    fiRatio={backendMetrics.fiRatio}
+                    investedAssets={backendMetrics.investedAssets}
+                    targetRetirementCorpus={backendMetrics.targetRetirementCorpus}
+                    estimatedRetirementAge={backendMetrics.estimatedRetirementAge}
+                  />
+                </div>
+              )}
+              <div className="lg:col-span-6">
+                <EmiStressGauge emiStressRatio={backendMetrics.emiStressRatio} />
+              </div>
+
+              <div className="lg:col-span-12">
+                <MoneyFlowSankey data={financialData} />
+              </div>
+
+              <div className="lg:col-span-6 h-full">
+                <AssetChart assets={financialData.assets} />
+              </div>
+              <div className="lg:col-span-6 h-full">
+                <LiabilityChart liabilities={financialData.liabilities} />
+              </div>
+
+              <div className="lg:col-span-12">
+                <WarningsPanel warnings={metrics.warnings} setRedirect={() => setDashboardTab("insights")} />
+              </div>
+            </div>
           </div>
         )}
 

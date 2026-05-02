@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import type { FinancialData, RiskAppetite } from "@/types/finance";
+import type { AgeRange, FinancialData, RiskAppetite } from "@/types/finance";
 import { distributeExpenses } from "@/lib/onboarding-defaults";
 
 interface FinancialFormProps {
@@ -29,6 +29,18 @@ function titleCase(key: string): string {
 
 const labelClass = "text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block";
 const inputClass = "nb-input w-full text-sm";
+const AGE_RANGE_OPTIONS: { value: AgeRange; label: string }[] = [
+  { value: "under_20", label: "< 20" },
+  { value: "20_25", label: "20 - 25" },
+  { value: "26_30", label: "26 - 30" },
+  { value: "31_35", label: "31 - 35" },
+  { value: "36_40", label: "36 - 40" },
+  { value: "41_45", label: "41 - 45" },
+  { value: "46_50", label: "46 - 50" },
+  { value: "51_55", label: "51 - 55" },
+  { value: "56_60", label: "56 - 60" },
+  { value: "above_60", label: "> 60" },
+];
 
 function Field({
   label,
@@ -80,8 +92,6 @@ interface CollapsibleMoneySectionProps {
   emoji: string;
   total: number;
   startOpen: boolean;
-  /** Distribute total into sub-fields using default ratios; called only when sub-fields are all zero */
-  onDistribute?: (total: number) => void;
   children: React.ReactNode;
 }
 
@@ -130,16 +140,27 @@ function CollapsibleMoneySection({
 export function FinancialForm({ data, onSave, startCollapsed = false }: FinancialFormProps) {
   const [form, setForm] = useState<FinancialData>(data);
 
-  const updateField = (section: string, field: string, raw: string) => {
+  const updateField = (
+    section: "root" | "expenses" | "assets" | "liabilities",
+    field: string,
+    raw: string
+  ) => {
     const num = parseRaw(raw);
     if (section === "root") {
-      setForm((prev) => ({ ...prev, [field]: num }));
-    } else {
-      setForm((prev) => ({
-        ...prev,
-        [section]: { ...(prev as Record<string, unknown>)[section] as object, [field]: num },
-      }));
+      if (field === "monthlyIncome") {
+        setForm((prev) => ({ ...prev, monthlyIncome: num }));
+      }
+      return;
     }
+    if (section === "expenses") {
+      setForm((prev) => ({ ...prev, expenses: { ...prev.expenses, [field]: num } }));
+      return;
+    }
+    if (section === "assets") {
+      setForm((prev) => ({ ...prev, assets: { ...prev.assets, [field]: num } }));
+      return;
+    }
+    setForm((prev) => ({ ...prev, liabilities: { ...prev.liabilities, [field]: num } }));
   };
 
   // When the user types a total in collapsed mode, distribute across sub-fields.
@@ -193,7 +214,6 @@ export function FinancialForm({ data, onSave, startCollapsed = false }: Financia
         emoji="🧾"
         total={totalExpenses}
         startOpen={!startCollapsed}
-        onDistribute={handleExpenseTotalChange}
       >
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {Object.entries(form.expenses).map(([key, val]) => (
@@ -272,6 +292,47 @@ export function FinancialForm({ data, onSave, startCollapsed = false }: Financia
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Retirement Planning Inputs */}
+      <div className="nb-card space-y-4">
+        <h3 className="font-sans font-bold text-foreground text-lg">🏁 Retirement Planning (Optional)</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>Age Range</label>
+            <select
+              className={inputClass}
+              value={form.ageRange ?? ""}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  ageRange: (e.target.value || undefined) as AgeRange | undefined,
+                }))
+              }
+            >
+              <option value="">Prefer not to share</option>
+              {AGE_RANGE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <Field
+            label="Target Retirement Corpus"
+            value={form.targetRetirementCorpus ?? 0}
+            onChange={(raw) =>
+              setForm((prev) => ({
+                ...prev,
+                targetRetirementCorpus: raw === "" ? undefined : parseRaw(raw),
+              }))
+            }
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          FI progress is shown only when both age range and target corpus are provided.
+        </p>
       </div>
 
       <div className="space-y-2">

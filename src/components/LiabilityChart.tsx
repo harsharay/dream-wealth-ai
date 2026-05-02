@@ -28,21 +28,24 @@ export function LiabilityChart({ liabilities }: LiabilityChartProps) {
 
   if (!hasData) {
     return (
-      <div className="nb-card">
+      <div className="nb-card h-full min-h-[360px] flex flex-col">
         <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">
           Liabilities
         </h3>
-        <p className="text-muted-foreground text-sm text-center py-8 font-medium">No liabilities — great! 🎉</p>
+        <p className="text-muted-foreground text-sm text-center py-8 font-medium flex-1 flex items-center justify-center">
+          No liabilities — great! 🎉
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="nb-card">
+    <div className="nb-card h-full min-h-[360px] flex flex-col">
       <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">
         Liabilities
       </h3>
-      <ResponsiveContainer width="100%" height={220}>
+      <div className="flex-1 min-h-[220px]">
+        <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} layout="vertical" margin={{ left: 20 }}>
           <XAxis
             type="number"
@@ -100,7 +103,8 @@ export function LiabilityChart({ liabilities }: LiabilityChartProps) {
             />
           </Bar>
         </BarChart>
-      </ResponsiveContainer>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

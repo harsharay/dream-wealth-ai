@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import hash from "object-hash";
-import type { FinancialData, FinancialMetrics } from "@/types/finance";
+import type { BackendFinancialMetrics, FinancialData, FinancialMetrics } from "@/types/finance";
 
 const isDev = import.meta.env.VITE_ENV === 'dev';
 const BACKEND_URL = isDev ? "http://localhost:3001" : (import.meta.env.VITE_API_URL || "http://localhost:3001");
@@ -17,6 +17,11 @@ export interface LLMInsightsResponse {
     sections: InsightSection[];
     warnings: string[];
     timestamp: number;
+}
+
+export interface FinancialRecordResponse {
+    data: FinancialData;
+    metrics: BackendFinancialMetrics;
 }
 
 const getAuthToken = async () => {
@@ -48,7 +53,7 @@ export async function fetchAIInsights(
     return await res.json() as LLMInsightsResponse;
 }
 
-export async function saveFinancialRecords(data: FinancialData): Promise<void> {
+export async function saveFinancialRecords(data: FinancialData): Promise<BackendFinancialMetrics> {
     const token = await getAuthToken();
     const res = await fetch(`${BACKEND_URL}/api/financial-records`, {
         method: "POST",
@@ -59,13 +64,16 @@ export async function saveFinancialRecords(data: FinancialData): Promise<void> {
         body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error("Failed to save financial records securely.");
+    const payload = await res.json() as { success: boolean; metrics: BackendFinancialMetrics };
+    return payload.metrics;
 }
 
-export async function loadFinancialRecords(): Promise<FinancialData | null> {
+export async function loadFinancialRecords(): Promise<FinancialRecordResponse | null> {
     const token = await getAuthToken();
     const res = await fetch(`${BACKEND_URL}/api/financial-records`, {
         headers: { "Authorization": `Bearer ${token}` }
     });
     if (!res.ok) throw new Error("Failed to load records securely.");
-    return await res.json();
+    const payload = await res.json() as FinancialRecordResponse | null;
+    return payload;
 }

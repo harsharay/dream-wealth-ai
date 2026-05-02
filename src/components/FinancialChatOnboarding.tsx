@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type ChangeEvent } from "react";
 import { Compass, ChevronRight, Check, ArrowLeft, Plus, X } from "lucide-react";
-import type { FinancialData, RiskAppetite } from "@/types/finance";
+import type { AgeRange, FinancialData, RiskAppetite } from "@/types/finance";
 import {
   type CityTier,
   type HousingSituation,
@@ -24,6 +24,7 @@ type Step =
   | "investments"
   | "debts"
   | "risk"
+  | "ageRange"
   | "done";
 
 interface ChatEntry {
@@ -89,6 +90,19 @@ const LIABILITY_OPTIONS = [
   { id: "homeLoan", label: "Home Loan EMI" },
   { id: "personalLoan", label: "Personal / Car Loan EMI" },
   { id: "creditCardDebt", label: "Credit Card Debt" },
+];
+
+const AGE_RANGE_OPTIONS: { value: AgeRange; label: string; emoji: string }[] = [
+  { value: "under_20", label: "< 20", emoji: "🌱" },
+  { value: "20_25", label: "20 - 25", emoji: "🚀" },
+  { value: "26_30", label: "26 - 30", emoji: "📈" },
+  { value: "31_35", label: "31 - 35", emoji: "⚖️" },
+  { value: "36_40", label: "36 - 40", emoji: "🧭" },
+  { value: "41_45", label: "41 - 45", emoji: "🏔️" },
+  { value: "46_50", label: "46 - 50", emoji: "🎯" },
+  { value: "51_55", label: "51 - 55", emoji: "🌅" },
+  { value: "56_60", label: "56 - 60", emoji: "🛡️" },
+  { value: "above_60", label: "> 60", emoji: "🌟" },
 ];
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
@@ -826,11 +840,45 @@ function StepRisk({ onSelect }: { onSelect: (r: RiskAppetite) => void }) {
   );
 }
 
+function StepAgeRange({
+  onSelect,
+  onSkip,
+}: {
+  onSelect: (range: AgeRange) => void;
+  onSkip: () => void;
+}) {
+  return (
+    <div className="space-y-3 animate-in slide-in-from-bottom-4 fade-in duration-300">
+      <div className="grid grid-cols-2 gap-2">
+        {AGE_RANGE_OPTIONS.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onSelect(o.value)}
+            className="nb-card py-3 px-3 text-left hover:bg-muted transition-colors flex items-center gap-2"
+            style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}
+          >
+            <span>{o.emoji}</span>
+            <span className="text-xs font-bold">{o.label}</span>
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onSkip}
+        className="w-full text-xs font-bold text-muted-foreground hover:text-foreground underline"
+      >
+        Skip for now
+      </button>
+    </div>
+  );
+}
+
 // ─── Progress bar ─────────────────────────────────────────────────────────────
 
 const STEPS_ORDER: Step[] = [
   "income", "city", "housing", "totalExpenses", "expenseBreakdown",
-  "savings", "investments", "debts", "risk",
+  "savings", "investments", "debts", "risk", "ageRange",
 ];
 
 function ProgressBar({ step }: { step: Step }) {
@@ -901,6 +949,8 @@ export function FinancialChatOnboarding({ onDone }: Props) {
     investments: "Do you have any investments? Select all that apply.",
     debts: "Any outstanding loans or debt? Select all that apply.",
     risk: "Almost there! What's your risk appetite for investments?",
+    ageRange:
+      "Optional: Which age range are you in? I use the median age of the range to estimate FI timeline (retirement age 60).",
     done: "",
   };
 
@@ -1021,15 +1071,19 @@ export function FinancialChatOnboarding({ onDone }: Props) {
   };
 
   const handleRisk = (r: RiskAppetite) => {
-    const finalForm = { ...form, riskAppetite: r };
-    setForm(finalForm);
+    const updatedForm = { ...form, riskAppetite: r };
+    setForm(updatedForm);
     const riskLabels: Record<RiskAppetite, string> = {
       low: "🛡️ Low risk",
       medium: "⚖️ Medium risk",
       high: "🚀 High risk",
     };
+    advance("ageRange", riskLabels[r], BOT_QUESTIONS.ageRange);
+  };
+
+  const finalizeOnboarding = (finalForm: FinancialData, userText: string) => {
     pushHistory([
-      { role: "user", text: riskLabels[r] },
+      { role: "user", text: userText },
       {
         role: "bot",
         text: "All systems go! Here's a summary of your data. Review it, then launch your financial insights 🚀",
@@ -1038,6 +1092,19 @@ export function FinancialChatOnboarding({ onDone }: Props) {
     setStep("done");
     clearDraft();
     setTimeout(() => onDone(finalForm), 300);
+  };
+
+  const handleAgeRange = (range: AgeRange) => {
+    const finalForm = { ...form, ageRange: range };
+    setForm(finalForm);
+    const label = AGE_RANGE_OPTIONS.find((opt) => opt.value === range)?.label ?? range;
+    finalizeOnboarding(finalForm, label);
+  };
+
+  const handleSkipAgeRange = () => {
+    const finalForm = { ...form, ageRange: undefined };
+    setForm(finalForm);
+    finalizeOnboarding(finalForm, "Skipped");
   };
 
   // ── Render current input ───────────────────────────────────────────────────
@@ -1078,6 +1145,8 @@ export function FinancialChatOnboarding({ onDone }: Props) {
         return <StepDebts onNext={handleDebts} />;
       case "risk":
         return <StepRisk onSelect={handleRisk} />;
+      case "ageRange":
+        return <StepAgeRange onSelect={handleAgeRange} onSkip={handleSkipAgeRange} />;
       case "done":
         return (
           <div className="flex items-center gap-2 text-accent text-sm font-bold animate-in fade-in">

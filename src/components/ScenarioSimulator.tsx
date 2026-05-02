@@ -322,9 +322,8 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
           const o = (r ?? {}) as Record<string, unknown>;
           const bullets = Array.isArray(o.impact_bullets) ? o.impact_bullets : [];
           const items = Array.isArray(o.action_items) ? o.action_items : [];
-          const difficulty = (["Easy", "Medium", "Hard"].includes(String(o.difficulty))
-            ? o.difficulty
-            : "Medium") as Recommendation["difficulty"];
+          const rawDiff = String(o.difficulty || "").toLowerCase();
+          const difficulty = (rawDiff === "easy" ? "Easy" : rawDiff === "hard" ? "Hard" : "Medium") as Recommendation["difficulty"];
           return {
             title: toStr(o.title),
             description: toStr(o.description),
@@ -785,6 +784,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                 {questions[currentQIndex].options.map((opt) => (
                   <button
                     key={opt}
+                    disabled={!!currentInput}
                     onClick={() => {
                       setCurrentInput(opt);
                       // Short delay so user sees the chip selected before auto-submit

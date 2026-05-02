@@ -163,6 +163,8 @@ export const emptyFinancialData: FinancialData = {
     others: 0,
   },
   riskAppetite: "medium",
+  ageRange: undefined,
+  targetRetirementCorpus: undefined,
 };
 
 // ─── Fallback insights (used when backend is offline) ─────────────────────────
