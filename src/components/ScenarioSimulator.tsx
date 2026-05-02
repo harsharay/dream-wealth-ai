@@ -42,6 +42,12 @@ interface ScenarioSimulatorProps {
 
 type SimulatorPhase = "intro" | "questions" | "paths" | "mission";
 
+interface Question {
+  theme: string;
+  q: string;
+  options: string[];
+}
+
 interface Recommendation {
   title: string;
   description: string;
@@ -56,7 +62,7 @@ interface Recommendation {
 export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: ScenarioSimulatorProps) {
   const { user } = useAuth();
   const [phase, setPhase] = useState<SimulatorPhase>("intro");
-  const [questions, setQuestions] = useState<string[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<string[]>([]);
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [currentInput, setCurrentInput] = useState("");
@@ -71,7 +77,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
   const lastGenAtRef = useRef<number>(0);
 
   // Persistence: Save State
-  const saveState = useCallback(async (state: Partial<{ phase: SimulatorPhase; questions: string[]; answers: string[]; currentQIndex: number; recommendations: Recommendation[]; lastGeneratedAt: number }>) => {
+  const saveState = useCallback(async (state: Partial<{ phase: SimulatorPhase; questions: Question[]; answers: string[]; currentQIndex: number; recommendations: Recommendation[]; lastGeneratedAt: number }>) => {
     if (!user) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -105,7 +111,23 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
           savedState = await stateRes.json();
           if (savedState && isMounted) {
             setPhase(savedState.phase || "intro");
-            setQuestions(savedState.questions || []);
+            const savedQs: Question[] = (savedState.questions || [])
+              .map((item: unknown): Question | null => {
+                if (typeof item === "string") return item ? { theme: "general", q: item, options: [] } : null;
+                if (item && typeof item === "object") {
+                  const o = item as { q?: string; question?: string; text?: string; theme?: string; options?: unknown[] };
+                  const q = o.q || o.question || o.text || "";
+                  if (!q) return null;
+                  return {
+                    theme: o.theme || "general",
+                    q,
+                    options: Array.isArray(o.options) ? o.options.map(String).filter(Boolean) : [],
+                  };
+                }
+                return null;
+              })
+              .filter((q): q is Question => q !== null);
+            setQuestions(savedQs);
             setAnswers(savedState.answers || []);
             setCurrentQIndex(savedState.currentQIndex || 0);
             setRecommendations(savedState.recommendations || []);
@@ -214,7 +236,22 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
       });
       if (!res.ok) throw new Error("Failed to load level data");
       const result = await res.json();
-      const q = result.questions || [];
+      const q: Question[] = (result.questions || [])
+        .map((item: unknown): Question | null => {
+          if (typeof item === "string") return item ? { theme: "general", q: item, options: [] } : null;
+          if (item && typeof item === "object") {
+            const o = item as { q?: string; question?: string; text?: string; theme?: string; options?: unknown[] };
+            const text = o.q || o.question || o.text || "";
+            if (!text) return null;
+            return {
+              theme: o.theme || "general",
+              q: text,
+              options: Array.isArray(o.options) ? o.options.map(String).filter(Boolean) : [],
+            };
+          }
+          return null;
+        })
+        .filter((item): item is Question => item !== null);
       setQuestions(q);
       setPhase("questions");
       setCurrentQIndex(0);
@@ -255,7 +292,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
     setPhase("paths");
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const qna = questions.map((q, i) => ({ question: q, answer: finalAnswers[i] }));
+      const qna = questions.map((q, i) => ({ question: q.q, answer: finalAnswers[i] }));
       const res = await fetch(`${BACKEND_URL}/api/simulator/recommend`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
@@ -263,7 +300,50 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
       });
       if (!res.ok) throw new Error("Failed to generate paths");
       const result = await res.json();
-      const recs = result.recommendations || [];
+
+      const toStr = (v: unknown): string => {
+        if (typeof v === "string") return v;
+        if (typeof v === "number" || typeof v === "boolean") return String(v);
+        if (v && typeof v === "object") {
+          const o = v as { text?: unknown; bullet?: unknown; description?: unknown; q?: unknown };
+          return toStr(o.text ?? o.bullet ?? o.description ?? o.q ?? "");
+        }
+        return "";
+      };
+
+      const rawRecs: unknown[] = Array.isArray(result?.recommendations)
+        ? result.recommendations
+        : Array.isArray(result)
+          ? result
+          : [];
+
+      const recs: Recommendation[] = rawRecs
+        .map((r) => {
+          const o = (r ?? {}) as Record<string, unknown>;
+          const bullets = Array.isArray(o.impact_bullets) ? o.impact_bullets : [];
+          const items = Array.isArray(o.action_items) ? o.action_items : [];
+          const difficulty = (["Easy", "Medium", "Hard"].includes(String(o.difficulty))
+            ? o.difficulty
+            : "Medium") as Recommendation["difficulty"];
+          return {
+            title: toStr(o.title),
+            description: toStr(o.description),
+            vision: toStr(o.vision),
+            impact_bullets: bullets.map(toStr).filter((s) => s.length > 0),
+            difficulty,
+            duration_weeks: Number(o.duration_weeks) || 12,
+            target_amount: Number(o.target_amount) || 0,
+            action_items: items
+              .map((it) => {
+                const i = (it ?? {}) as Record<string, unknown>;
+                const text = toStr(i.text ?? i);
+                if (!text) return null;
+                return { text, impact: Number(i.impact) || 1 } as ActionItem;
+              })
+              .filter((x): x is ActionItem => x !== null),
+          };
+        })
+        .filter((r) => r.title.length > 0);
       setRecommendations(recs);
       
       // PERSIST IMMEDIATELY
@@ -632,7 +712,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                     await fetch(`${BACKEND_URL}/api/simulator/rate`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-                      body: JSON.stringify({ question: questions[currentQIndex], rating: 1 })
+                      body: JSON.stringify({ question: questions[currentQIndex]?.q, rating: 1 })
                     });
                     toast.success("Thanks for the feedback! 🚀");
                   }}
@@ -646,7 +726,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                     await fetch(`${BACKEND_URL}/api/simulator/rate`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-                      body: JSON.stringify({ question: questions[currentQIndex], rating: -1 })
+                      body: JSON.stringify({ question: questions[currentQIndex]?.q, rating: -1 })
                     });
                     toast.success("Feedback received. Improving the Pilot... 🛠️");
                   }}
@@ -670,7 +750,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                     await fetch(`${BACKEND_URL}/api/simulator/rate`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-                      body: JSON.stringify({ question: questions[currentQIndex], rating: 1 })
+                      body: JSON.stringify({ question: questions[currentQIndex]?.q, rating: 1 })
                     });
                     toast.success("Thanks for the feedback! 🚀");
                   }}
@@ -684,7 +764,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                     await fetch(`${BACKEND_URL}/api/simulator/rate`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-                      body: JSON.stringify({ question: questions[currentQIndex], rating: -1 })
+                      body: JSON.stringify({ question: questions[currentQIndex]?.q, rating: -1 })
                     });
                     toast.success("Feedback received. Improving the Pilot... 🛠️");
                   }}
@@ -695,63 +775,71 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                </div>
           
           <div className="flex-1 max-w-2xl mx-auto w-full">
-            
-            <h3 className="text-2xl font-black text-foreground mb-8 leading-relaxed animate-in slide-in-from-right-8 duration-300">
-              "{questions[currentQIndex]}"
+            <h3 className="text-2xl font-black text-foreground mb-6 leading-relaxed animate-in slide-in-from-right-8 duration-300">
+              "{questions[currentQIndex]?.q}"
             </h3>
-            <div className="space-y-4">
-              {/* <div className="relative w-[max-content] md:w-auto">
-                <input 
-                  type="text" 
-                  value={currentInput}
-                  onChange={e => setCurrentInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && submitAnswer()}
-                  placeholder="Talk to the Pilot..."
-                  className="w-full text-lg p-6 pr-2 rounded-xl border-4 border-foreground bg-background font-medium focus:outline-none focus:ring-4 focus:ring-accent/50 focus:border-accent transition-all nb-shadow-sm"
-                  autoFocus
-                />
-                <button 
-                  onClick={submitAnswer}
-                  disabled={!currentInput.trim()}
-                  className="absolute right-[-70px] top-3 bottom-3 aspect-square bg-foreground text-background flex items-center justify-center rounded-lg hover:bg-accent disabled:opacity-50 transition-colors"
-                > */}
-                <div className="relative w-[max-content] md:w-auto">
-                  <textarea
-                    value={currentInput}
-                    ref={textareaRef}
-                    onChange={e => setCurrentInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        submitAnswer();
-                      }
-                    }}
-                    placeholder="Talk to the Pilot..."
-                    rows={1}
-                    className="w-full text-lg p-6 pr-16 rounded-xl border-4 border-foreground bg-background font-medium focus:outline-none focus:ring-4 focus:ring-accent/50 focus:border-accent transition-all nb-shadow-sm resize-none overflow-hidden max-h-[200px] overflow-y-auto"
-                    autoFocus
-                  />
 
-                  <button 
-                    onClick={submitAnswer}
-                    disabled={!currentInput.trim()}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 h-12 w-12 bg-foreground text-background flex items-center justify-center rounded-lg hover:bg-accent disabled:opacity-50 transition-colors"
-                  >
-                    <ArrowRight className="w-6 h-6" />
-                  </button>
-                </div>
-              
-              {/* <div className="flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200">
-                {["Saving for a home", "Retirement planning", "Emergency fund", "International trip", "Buying a car"].map(suggestion => (
+            {/* Suggested answer chips */}
+            {questions[currentQIndex]?.options?.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                {questions[currentQIndex].options.map((opt) => (
                   <button
-                    key={suggestion}
-                    onClick={() => setCurrentInput(suggestion)}
-                    className="px-3 py-1.5 rounded-lg border-2 border-foreground text-[10px] font-black uppercase tracking-tight bg-background hover:bg-secondary/20 transition-all active:scale-95"
+                    key={opt}
+                    onClick={() => {
+                      setCurrentInput(opt);
+                      // Short delay so user sees the chip selected before auto-submit
+                      setTimeout(() => {
+                        const newAnswers = [...answers, opt];
+                        setAnswers(newAnswers);
+                        setCurrentInput("");
+                        if (currentQIndex < questions.length - 1) {
+                          setCurrentQIndex(currentQIndex + 1);
+                        } else {
+                          generatePaths(newAnswers);
+                        }
+                      }, 120);
+                    }}
+                    className={`px-4 py-2 rounded-lg border-2 border-foreground text-xs font-black uppercase tracking-tight transition-all active:scale-95 ${
+                      currentInput === opt
+                        ? "bg-accent text-background border-accent"
+                        : "bg-background hover:bg-accent/10"
+                    }`}
                   >
-                    {suggestion}
+                    {opt}
                   </button>
                 ))}
-              </div> */}
+              </div>
+            )}
+
+            {/* Manual entry */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                {questions[currentQIndex]?.options?.length > 0 ? "Or type your own answer:" : "Your answer:"}
+              </p>
+              <div className="relative w-full">
+                <textarea
+                  value={currentInput}
+                  ref={textareaRef}
+                  onChange={e => setCurrentInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      submitAnswer();
+                    }
+                  }}
+                  placeholder="Talk to the Pilot..."
+                  rows={1}
+                  className="w-full text-lg p-6 pr-16 rounded-xl border-4 border-foreground bg-background font-medium focus:outline-none focus:ring-4 focus:ring-accent/50 focus:border-accent transition-all nb-shadow-sm resize-none overflow-hidden max-h-[200px] overflow-y-auto"
+                  autoFocus
+                />
+                <button
+                  onClick={submitAnswer}
+                  disabled={!currentInput.trim()}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 h-12 w-12 bg-foreground text-background flex items-center justify-center rounded-lg hover:bg-accent disabled:opacity-50 transition-colors"
+                >
+                  <ArrowRight className="w-6 h-6" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
