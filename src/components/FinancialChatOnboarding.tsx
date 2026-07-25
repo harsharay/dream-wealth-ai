@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback, type ChangeEvent } from "react";
-import { Compass, ChevronRight, Check, ArrowLeft, Plus, X } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, type ChangeEvent, type ReactNode } from "react";
+import { Compass, ChevronRight, ChevronUp, ChevronDown, Check, ArrowLeft, Plus, X, Maximize2 } from "lucide-react";
 import type { AgeRange, FinancialData, RiskAppetite } from "@/types/finance";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   type CityTier,
   type HousingSituation,
@@ -9,6 +10,13 @@ import {
   INCOME_RANGES,
 } from "@/lib/onboarding-defaults";
 import { emptyFinancialData } from "@/lib/financial-engine";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Props {
   onDone: (data: FinancialData) => void;
@@ -164,16 +172,10 @@ function toWordsINR(n: number): string {
 function BotBubble({ text }: { text: string }) {
   return (
     <div className="flex items-start gap-3 animate-in slide-in-from-left-4 fade-in duration-300">
-      <div
-        className="shrink-0 w-8 h-8 rounded-lg bg-primary border-2 border-foreground flex items-center justify-center"
-        style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}
-      >
+      <div className="shrink-0 w-8 h-8 rounded-lg bg-primary border border-foreground/20 flex items-center justify-center">
         <Compass className="w-4 h-4 text-primary-foreground" />
       </div>
-      <div
-        className="nb-card py-3 px-4 max-w-[85%] text-base font-medium leading-relaxed"
-        style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}
-      >
+      <div className="py-3 px-4 max-w-[85%] text-base font-medium leading-relaxed rounded-2xl rounded-tl-md bg-muted/50 border border-foreground/15 text-foreground">
         {text}
       </div>
     </div>
@@ -183,10 +185,7 @@ function BotBubble({ text }: { text: string }) {
 function UserBubble({ text }: { text: string }) {
   return (
     <div className="flex justify-end animate-in slide-in-from-right-4 fade-in duration-200">
-      <div
-        className="rounded-lg py-3 px-4 max-w-[80%] text-sm font-bold bg-primary text-primary-foreground border-2 border-foreground"
-        style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}
-      >
+      <div className="py-2.5 px-4 max-w-[80%] text-sm font-medium leading-relaxed rounded-2xl rounded-tr-md bg-primary/15 text-foreground">
         {text}
       </div>
     </div>
@@ -209,8 +208,8 @@ function Chip({
       className={`px-4 py-2 rounded-lg border-2 border-foreground text-sm font-bold transition-all duration-150 ${
         selected
           ? "bg-primary text-primary-foreground"
-          : "bg-card text-foreground hover:bg-muted"
-      }`}
+          : "bg-card text-foreground "
+      } hover:-translate-y-0.5 transition-transform duration-300 ease-out cursor-pointer`}
       style={{
         boxShadow: selected
           ? "1px 1px 0px 0px hsl(var(--foreground))"
@@ -312,8 +311,8 @@ function StepIncome({ onSelect }: { onSelect: (val: number, label: string) => vo
 
 function StepCity({ onSelect }: { onSelect: (tier: CityTier, label: string) => void }) {
   const opts: { tier: CityTier; label: string; sub: string }[] = [
-    { tier: "metro", label: "Metro", sub: "Mumbai, Delhi, Bengaluru, Chennai…" },
-    { tier: "tier1", label: "Tier 1", sub: "Pune, Hyderabad, Ahmedabad…" },
+    { tier: "metro", label: "Metro", sub: "Mumbai, Delhi, Hyderabad, Bengaluru, Chennai…" },
+    { tier: "tier1", label: "Tier 1", sub: "Pune, Ahmedabad, Kolkata…" },
     { tier: "tier2", label: "Tier 2 / 3", sub: "Smaller cities & towns" },
   ];
   return (
@@ -374,13 +373,16 @@ function StepTotalExpenses({
   useEffect(() => {
     setVal(defaultValue);
   }, [defaultValue]);
+    // odl key:AIzaSyC9JunyhHoWzQx1TcVi6u7vOCaQbrxnCsA
 
   return (
     <div className="space-y-3 animate-in slide-in-from-bottom-4 fade-in duration-300">
       <p className="text-xs text-muted-foreground font-medium">
-        We've pre-filled a typical estimate based on your income and city. Adjust freely.
+        Pre-filled from your income & city. The estimate includes housing, food, transport, utilities,
+        insurance, entertainment, healthcare, education & other - not EMIs or investments.
+        Adjust freely; next step splits this total by category.
       </p>
-      <NumberInput value={val} onChange={setVal} placeholder="₹ Monthly expenses" />
+      <NumberInput value={val} onChange={setVal} placeholder="₹ Monthly living expenses" />
       <button
         type="button"
         disabled={val === 0}
@@ -440,20 +442,18 @@ function StepExpenseBreakdown({
         </span>
       </div>
 
-      <div className="grid grid-cols-1 gap-2">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
         {Object.entries(expenses).map(([key, val]) => (
-          <div key={key} className="flex items-center gap-3">
-            <label className="text-xs font-bold w-32 shrink-0 text-muted-foreground">
+          <div key={key} className="flex flex-col gap-1 min-w-0">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground truncate">
               {EXPENSE_LABELS[key] ?? key}
             </label>
             {key === "other" ? (
-              <div className="flex-1 nb-input py-2 text-sm text-muted-foreground bg-muted/40">
+              <div className="nb-input py-2 text-sm text-muted-foreground bg-muted/40">
                 {shortLabel(val)} <span className="text-[10px]">(auto)</span>
               </div>
             ) : (
-              <div className="flex-1">
-                <NumberInput small value={val} onChange={(n) => handleChange(key, n)} />
-              </div>
+              <NumberInput small value={val} onChange={(n) => handleChange(key, n)} />
             )}
           </div>
         ))}
@@ -901,9 +901,57 @@ function ProgressBar({ step }: { step: Step }) {
   );
 }
 
+/** Compact teaser in the chat input slot; opens a modal for tall forms. Outside click closes without sending. */
+function ExpandableStep({
+  title,
+  summary,
+  children,
+}: {
+  title: string;
+  summary: string;
+  children: (close: () => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full text-left flex items-center justify-between gap-3 group"
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-black text-foreground">{title}</p>
+          <p className="text-xs font-medium text-muted-foreground truncate mt-0.5">{summary}</p>
+        </div>
+        <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-primary group-hover:translate-x-0.5 transition-transform">
+          <Maximize2 className="w-3.5 h-3.5" />
+          Open
+        </span>
+      </button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto border-2 border-foreground rounded-xl bg-card p-5 sm:p-6 shadow-[6px_6px_0px_0px_hsl(var(--foreground))]">
+          <DialogHeader className="text-left pr-6">
+            <DialogTitle className="font-black text-lg tracking-tight">{title}</DialogTitle>
+            <DialogDescription className="text-xs font-medium">
+              Edit below, then confirm. Click outside to close without sending.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-1">{children(close)}</div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function FinancialChatOnboarding({ onDone }: Props) {
+  const { user } = useAuth();
+  const name = user.user_metadata.full_name?.split(" ")[0] || "User";
+
   // Restore from draft if available
   const savedDraft = loadDraft();
   const isResume = savedDraft !== null && savedDraft.step !== "income";
@@ -918,10 +966,41 @@ export function FinancialChatOnboarding({ onDone }: Props) {
   const [showResumeBanner, setShowResumeBanner] = useState(isResume);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+
+  const updateScrollCues = useCallback(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const epsilon = 4;
+    setCanScrollUp(scrollTop > epsilon);
+    setCanScrollDown(scrollTop + clientHeight < scrollHeight - epsilon);
+  }, []);
+
+  const scrollChatTo = (position: "top" | "bottom") => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    el.scrollTo({
+      top: position === "top" ? 0 : el.scrollHeight,
+      behavior: "smooth",
+    });
+    setTimeout(updateScrollCues, 200);
+  };
 
   const scrollToBottom = () => {
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+    setTimeout(() => scrollChatTo("bottom"), 80);
   };
+
+  useEffect(() => {
+    updateScrollCues();
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(updateScrollCues);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [history, updateScrollCues]);
 
   // Persist draft on every meaningful change
   const persistDraft = useCallback(() => {
@@ -939,10 +1018,11 @@ export function FinancialChatOnboarding({ onDone }: Props) {
   };
 
   const BOT_QUESTIONS: Record<Step, string> = {
-    income: "Hey Pilot! 👋 Let's map your financial coordinates. What's your monthly take-home income?",
+    income: `Hey ${name}!  Let's map your financial coordinates. What's your monthly take-home income?`,
     city: "Great! Which city tier do you live in? This helps me estimate typical expense ratios.",
     housing: "How's your housing situation?",
-    totalExpenses: "Based on your income and city, here's an estimated monthly expense total. How close is this?",
+    totalExpenses:
+      "Based on your income and city, here's an estimated monthly spend covering housing, food, transport, utilities, insurance, entertainment, healthcare, education, and other day-to-day costs. How close is this?",
     expenseBreakdown:
       "Here's how I've broken down those expenses. Adjust any category freely — 'Other' will auto-balance.",
     savings: "Nice! How much do you have in your bank account / liquid savings right now?",
@@ -1128,21 +1208,64 @@ export function FinancialChatOnboarding({ onDone }: Props) {
             onNext={handleTotalExpenses}
           />
         );
-      case "expenseBreakdown":
+      case "expenseBreakdown": {
+        const expenseTotal = Object.values(form.expenses).reduce((s, v) => s + v, 0);
         return (
-          <StepExpenseBreakdown
-            expenses={form.expenses as unknown as Record<string, number>}
-            total={Object.values(form.expenses).reduce((s, v) => s + v, 0)}
-            onNext={handleExpenseBreakdown}
-            onEditTotal={handleEditTotal}
-          />
+          <ExpandableStep
+            title="Expense breakdown"
+            summary={`${shortLabel(expenseTotal)}/mo across ${Object.keys(EXPENSE_LABELS).length} categories`}
+          >
+            {(close) => (
+              <StepExpenseBreakdown
+                expenses={form.expenses as unknown as Record<string, number>}
+                total={expenseTotal}
+                onNext={(expenses) => {
+                  close();
+                  handleExpenseBreakdown(expenses);
+                }}
+                onEditTotal={() => {
+                  close();
+                  handleEditTotal();
+                }}
+              />
+            )}
+          </ExpandableStep>
         );
+      }
       case "savings":
         return <StepSavings onNext={handleSavings} />;
       case "investments":
-        return <StepInvestments onNext={handleInvestments} />;
+        return (
+          <ExpandableStep
+            title="Investments"
+            summary="Mutual funds, stocks, gold, real estate & more"
+          >
+            {(close) => (
+              <StepInvestments
+                onNext={(assets, customTotal) => {
+                  close();
+                  handleInvestments(assets, customTotal);
+                }}
+              />
+            )}
+          </ExpandableStep>
+        );
       case "debts":
-        return <StepDebts onNext={handleDebts} />;
+        return (
+          <ExpandableStep
+            title="Loans & debt"
+            summary="Home loan, personal loan, credit cards & other"
+          >
+            {(close) => (
+              <StepDebts
+                onNext={(liabilities) => {
+                  close();
+                  handleDebts(liabilities);
+                }}
+              />
+            )}
+          </ExpandableStep>
+        );
       case "risk":
         return <StepRisk onSelect={handleRisk} />;
       case "ageRange":
@@ -1157,10 +1280,10 @@ export function FinancialChatOnboarding({ onDone }: Props) {
   };
 
   return (
-    <div className="w-full max-w-xl mx-auto space-y-4">
+    <div className="w-full max-w-xl mx-auto h-full flex flex-col gap-4 min-h-0">
       {/* Resume banner */}
       {showResumeBanner && (
-        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg border-2 border-accent/50 bg-accent/10 animate-in slide-in-from-top-2 fade-in">
+        <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-3 rounded-lg border-2 border-accent/50 bg-accent/10 animate-in slide-in-from-top-2 fade-in">
           <p className="text-xs font-bold text-accent">
             ✨ Resuming where you left off
           </p>
@@ -1182,22 +1305,59 @@ export function FinancialChatOnboarding({ onDone }: Props) {
         </div>
       )}
 
-      <ProgressBar step={step} />
+      <div className="shrink-0">
+        <ProgressBar step={step} />
+      </div>
 
-      {/* Chat history */}
-      <div className="space-y-3 min-h-[80px]">
-        {history.map((entry, i) =>
-          entry.role === "bot" ? (
-            <BotBubble key={i} text={entry.text} />
-          ) : (
-            <UserBubble key={i} text={entry.text} />
-          )
+      {/* Chat history — only this region scrolls */}
+      <div className="relative flex-1 min-h-0">
+        {canScrollUp && (
+          <div className="absolute top-0 inset-x-0 z-10 h-10 bg-gradient-to-b from-background via-background/80 to-transparent flex justify-center pt-0.5 pointer-events-none">
+            <button
+              type="button"
+              aria-label="Scroll to top of conversation"
+              onClick={() => scrollChatTo("top")}
+              className="pointer-events-auto p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+          </div>
         )}
-        <div ref={bottomRef} />
+
+        <div
+          ref={chatScrollRef}
+          onScroll={updateScrollCues}
+          className="h-full overflow-y-auto overscroll-contain pt-2 pb-2 space-y-5"
+        >
+          {history.map((entry, i) =>
+            entry.role === "bot" ? (
+              <BotBubble key={i} text={entry.text} />
+            ) : (
+              <UserBubble key={i} text={entry.text} />
+            )
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {canScrollDown && (
+          <div className="absolute bottom-0 inset-x-0 z-10 h-10 bg-gradient-to-t from-background via-background/80 to-transparent flex justify-center items-end pb-0.5 pointer-events-none">
+            <button
+              type="button"
+              aria-label="Scroll to bottom of conversation"
+              onClick={() => scrollChatTo("bottom")}
+              className="pointer-events-auto p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+            >
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Current input area */}
-      <div className="nb-card" style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}>
+      <div
+        className="shrink-0 nb-card"
+        style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}
+      >
         {renderInput()}
       </div>
     </div>

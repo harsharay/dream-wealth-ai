@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
 import { toast } from 'sonner';
+import { ConfirmModal } from '@/components/ConfirmModal';
 
 interface AuthContextType {
     user: User | null;
@@ -34,6 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const saved = localStorage.getItem('beta_unlock_expires_at');
         return saved ? parseInt(saved, 10) : null;
     });
+    const [upgradeConfirmOpen, setUpgradeConfirmOpen] = useState(false);
 
     useEffect(() => {
         // Check active sessions
@@ -64,22 +66,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const upgradeToPro = async () => {
-        // Mock payment flow
-        const confirmed = window.confirm("You are about to upgrade to WealthPilot Pro for ₹999/year. Proceed with payment?");
-        if (confirmed) {
-            toast.promise(
-                new Promise((resolve) => setTimeout(resolve, 2000)),
-                {
-                    loading: 'Processing payment...',
-                    success: () => {
-                        setIsActualPaidUser(true);
-                        // In a real app, update the 'profiles' table in Supabase
-                        return 'Welcome to the inner circle, Pilot! Pro features unlocked.';
-                    },
-                    error: 'Payment failed. Please try again.',
-                }
-            );
-        }
+        setUpgradeConfirmOpen(true);
+    };
+
+    const confirmUpgradeToPro = () => {
+        setUpgradeConfirmOpen(false);
+        toast.promise(
+            new Promise((resolve) => setTimeout(resolve, 2000)),
+            {
+                loading: 'Processing payment...',
+                success: () => {
+                    setIsActualPaidUser(true);
+                    // In a real app, update the 'profiles' table in Supabase
+                    return 'Welcome to the inner circle, Pilot! Pro features unlocked.';
+                },
+                error: 'Payment failed. Please try again.',
+            }
+        );
     };
 
     const redeemBetaCode = (code: string): boolean => {
@@ -137,6 +140,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return (
         <AuthContext.Provider value={{ user, session, loading, isPaidUser: isEffectivelyPaidUser, signOut, upgradeToPro, redeemBetaCode }}>
             {children}
+            <ConfirmModal
+                open={upgradeConfirmOpen}
+                title="Upgrade to Pro?"
+                description="You're about to upgrade to WealthPilot Pro for ₹999/year. Proceed with payment?"
+                confirmLabel="Upgrade"
+                cancelLabel="Cancel"
+                variant="primary"
+                onCancel={() => setUpgradeConfirmOpen(false)}
+                onConfirm={confirmUpgradeToPro}
+            />
         </AuthContext.Provider>
     );
 };
