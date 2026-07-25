@@ -1,26 +1,39 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
-import type { FinancialData } from "@/types/finance";
+import type { BackendFinancialMetrics, FinancialData } from "@/types/finance";
 import { calculateMetrics } from "@/lib/financial-engine";
+import { buildMoneyStory, type QuestFocus } from "@/lib/money-story";
+import { QUEST_COPY } from "@/lib/quest-copy";
+import { clampDurationWeeks, type ActionCadence, type MissionCheckIn } from "@/lib/mission-plan";
+import { QuestFocusPicker } from "@/components/QuestFocusPicker";
+import { MissionHub } from "@/components/MissionHub";
+import { ConfirmModal } from "@/components/ConfirmModal";
+import { PlanDetailSheet } from "@/components/PlanDetailSheet";
 import { 
-  Loader2, ArrowRight, CheckCircle2, Sparkles, Gamepad2, Coins, 
-  Swords, Trophy, ThumbsUp, ThumbsDown, Activity, Ghost, CheckSquare, Square, 
-  TrendingUp, ArrowLeft, Target, PlayCircle
+  Loader2, ArrowRight, Activity, Ghost, 
+  Target, PlayCircle, Gamepad2, ThumbsUp, ThumbsDown, ChevronRight
 } from "lucide-react";
 import { toast } from "sonner";
-import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer, Legend, ReferenceLine 
-} from "recharts";
 
 const isDev = import.meta.env.VITE_ENV === 'dev';
 const BACKEND_URL = isDev ? "http://localhost:3001" : (import.meta.env.VITE_API_URL || "http://localhost:3001");
+
+const EMPTY_BACKEND_METRICS: BackendFinancialMetrics = {
+  emergencyBufferMonths: 0,
+  fiMetricAvailable: false,
+  fiRatio: null,
+  targetRetirementCorpus: null,
+  investedAssets: null,
+  estimatedRetirementAge: null,
+  emiStressRatio: 0,
+};
 
 interface ActionItem {
   text: string;
   impact: number;
   status?: "pending" | "completed" | "abandoned";
+  cadence?: ActionCadence;
 }
 
 interface TrackedAction {
@@ -32,12 +45,47 @@ interface TrackedAction {
   status: "not_started" | "in_progress" | "completed" | "abandoned";
   start_date?: string;
   last_update?: string;
+  mission_data?: {
+    duration_weeks?: number;
+    focuses?: ResolvedFocus[];
+    focus_ids?: string[];
+    start_snapshot?: {
+      checkup?: { id: string; title: string; status: QuestFocus["status"]; summary: string }[];
+      metrics?: Record<string, number>;
+    } | null;
+    check_ins?: MissionCheckIn[];
+    last_check_in_at?: string | null;
+  } | null;
 }
 
 interface ScenarioSimulatorProps {
   data: FinancialData;
+  backendMetrics?: BackendFinancialMetrics;
   focusedMissionId?: string | null;
   onMissionCleared?: () => void;
+  onRefreshData?: () => void;
+}
+
+type QuestFocusRole = "user" | "system";
+
+interface ResolvedFocus extends QuestFocus {
+  role: QuestFocusRole;
+  theme?: string;
+}
+
+/** Normalize flat focuses[] (new) or legacy { user, system, all }. */
+function normalizeFocusesResponse(raw: unknown, fallbackUser: QuestFocus[] = []): ResolvedFocus[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((f): f is ResolvedFocus => !!f && typeof f === "object" && "id" in f);
+  }
+  if (raw && typeof raw === "object") {
+    const o = raw as { user?: QuestFocus[]; system?: QuestFocus | null; all?: ResolvedFocus[] };
+    if (Array.isArray(o.all) && o.all.length) return o.all;
+    const user = (o.user || fallbackUser).map((f) => ({ ...f, role: "user" as const }));
+    const system = o.system ? [{ ...o.system, role: "system" as const }] : [];
+    return [...user, ...system];
+  }
+  return fallbackUser.map((f) => ({ ...f, role: "user" as const }));
 }
 
 type SimulatorPhase = "intro" | "questions" | "paths" | "mission";
@@ -57,9 +105,16 @@ interface Recommendation {
   duration_weeks: number;
   target_amount: number;
   action_items: ActionItem[];
+  focus_ids?: string[];
 }
 
-export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: ScenarioSimulatorProps) {
+export function ScenarioSimulator({
+  data,
+  backendMetrics = EMPTY_BACKEND_METRICS,
+  focusedMissionId,
+  onMissionCleared,
+  onRefreshData,
+}: ScenarioSimulatorProps) {
   const { user } = useAuth();
   const [phase, setPhase] = useState<SimulatorPhase>("intro");
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -72,12 +127,80 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
   const [activeMission, setActiveMission] = useState<TrackedAction | null>(null);
   const [eligibilityPopupOpen, setEligibilityPopupOpen] = useState(false);
   const [eligibilityData, setEligibilityData] = useState<{ eligible: boolean; nextAvailableAt?: string; remainingDays?: number } | null>(null);
+  const [focusPickerOpen, setFocusPickerOpen] = useState(false);
+  const [pendingForceRefresh, setPendingForceRefresh] = useState(false);
+  const [questFocuses, setQuestFocuses] = useState<ResolvedFocus[]>([]);
+  const [pendingPlan, setPendingPlan] = useState<Recommendation | null>(null);
+  const [detailPlan, setDetailPlan] = useState<Recommendation | null>(null);
+  const [focusedPlanIndex, setFocusedPlanIndex] = useState(0);
+  const [detailSlideDir, setDetailSlideDir] = useState<"left" | "right">("right");
+  const planCarouselRef = useRef<HTMLDivElement>(null);
+  const focusedPlanIndexRef = useRef(0);
+  const planScrollSettleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const metrics = calculateMetrics(data);
   const lastGenAtRef = useRef<number>(0);
 
+  useEffect(() => {
+    focusedPlanIndexRef.current = 0;
+    setFocusedPlanIndex(0);
+    setDetailSlideDir("right");
+  }, [recommendations]);
+
+  const readCarouselPlanIndex = useCallback(() => {
+    const el = planCarouselRef.current;
+    if (!el || !recommendations.length) return 0;
+    const first = el.querySelector<HTMLElement>("[data-plan-card]");
+    if (!first) return 0;
+    const step = first.offsetWidth + 12;
+    if (step <= 0) return 0;
+    return Math.max(0, Math.min(recommendations.length - 1, Math.round(el.scrollLeft / step)));
+  }, [recommendations.length]);
+
+  const settleFocusedPlanFromCarousel = useCallback(() => {
+    const next = readCarouselPlanIndex();
+    const prev = focusedPlanIndexRef.current;
+    if (next === prev) return;
+    setDetailSlideDir(next > prev ? "right" : "left");
+    focusedPlanIndexRef.current = next;
+    setFocusedPlanIndex(next);
+  }, [readCarouselPlanIndex]);
+
+  const focusPlanAtIndex = useCallback((index: number) => {
+    const next = Math.max(0, Math.min(recommendations.length - 1, index));
+    const prev = focusedPlanIndexRef.current;
+    if (next !== prev) {
+      setDetailSlideDir(next > prev ? "right" : "left");
+      focusedPlanIndexRef.current = next;
+      setFocusedPlanIndex(next);
+    }
+    const el = planCarouselRef.current;
+    const card = el?.querySelectorAll<HTMLElement>("[data-plan-card]")[next];
+    card?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [recommendations.length]);
+
+  useEffect(() => {
+    if (phase !== "paths") return;
+    const el = planCarouselRef.current;
+    if (!el) return;
+    const onScrollEnd = () => {
+      if (planScrollSettleTimer.current) clearTimeout(planScrollSettleTimer.current);
+      settleFocusedPlanFromCarousel();
+    };
+    el.addEventListener("scrollend", onScrollEnd);
+    return () => el.removeEventListener("scrollend", onScrollEnd);
+  }, [phase, recommendations.length, settleFocusedPlanFromCarousel]);
+
   // Persistence: Save State
-  const saveState = useCallback(async (state: Partial<{ phase: SimulatorPhase; questions: Question[]; answers: string[]; currentQIndex: number; recommendations: Recommendation[]; lastGeneratedAt: number }>) => {
+  const saveState = useCallback(async (state: Partial<{
+    phase: SimulatorPhase;
+    questions: Question[];
+    answers: string[];
+    currentQIndex: number;
+    recommendations: Recommendation[];
+    lastGeneratedAt: number;
+    focuses: ResolvedFocus[];
+  }>) => {
     if (!user) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -131,6 +254,9 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
             setAnswers(savedState.answers || []);
             setCurrentQIndex(savedState.currentQIndex || 0);
             setRecommendations(savedState.recommendations || []);
+            if (savedState.focuses) {
+              setQuestFocuses(normalizeFocusesResponse(savedState.focuses));
+            }
             if (savedState.lastGeneratedAt) {
               lastGenAtRef.current = savedState.lastGeneratedAt;
             }
@@ -178,11 +304,12 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
         answers,
         currentQIndex,
         recommendations,
-        lastGeneratedAt: lastGenAtRef.current
+        lastGeneratedAt: lastGenAtRef.current,
+        focuses: questFocuses,
       });
     }, 5000); // 5s debounce for regular input
     return () => clearTimeout(timeout);
-  }, [phase, questions, answers, currentQIndex, recommendations, saveState, isInitializing]);
+  }, [phase, questions, answers, currentQIndex, recommendations, questFocuses, saveState, isInitializing]);
 
   // Explicit refetch for manual actions
   const fetchActiveMission = useCallback(async () => {
@@ -220,7 +347,14 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
     }
   }, [user, focusedMissionId, fetchActiveMission, isInitializing]);
 
-  const fetchQuestions = async (forceRefresh = false) => {
+  const openFocusPicker = (forceRefresh = false) => {
+    setPendingForceRefresh(forceRefresh);
+    setLoading(false);
+    setFocusPickerOpen(true);
+  };
+
+  const fetchQuestions = async (userFocuses: QuestFocus[], forceRefresh = false) => {
+    setFocusPickerOpen(false);
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -230,12 +364,19 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
         body: JSON.stringify({ 
           data, 
           metrics,
-          style: "conversational", // Tell backend to use Claude-style simple questions
-          force_refresh: forceRefresh
+          style: "conversational",
+          force_refresh: forceRefresh,
+          user_focuses: userFocuses,
         })
       });
-      if (!res.ok) throw new Error("Failed to load level data");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to load level data" }));
+        throw new Error(err.error || "Failed to load level data");
+      }
       const result = await res.json();
+      const resolvedFocuses = normalizeFocusesResponse(result.focuses, userFocuses);
+      setQuestFocuses(resolvedFocuses);
+
       const q: Question[] = (result.questions || [])
         .map((item: unknown): Question | null => {
           if (typeof item === "string") return item ? { theme: "general", q: item, options: [] } : null;
@@ -264,7 +405,8 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
         currentQIndex: 0, 
         answers: [], 
         recommendations: [],
-        lastGeneratedAt: lastGenAtRef.current
+        lastGeneratedAt: lastGenAtRef.current,
+        focuses: resolvedFocuses,
       });
 
     } catch (err) {
@@ -296,7 +438,13 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
       const res = await fetch(`${BACKEND_URL}/api/simulator/recommend`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ qna, metrics, data })
+        body: JSON.stringify({
+          qna,
+          metrics,
+          data,
+          user_focuses: questFocuses.filter((f) => f.role === "user"),
+          focuses: questFocuses,
+        })
       });
       if (!res.ok) throw new Error("Failed to generate paths");
       const result = await res.json();
@@ -324,20 +472,28 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
           const items = Array.isArray(o.action_items) ? o.action_items : [];
           const rawDiff = String(o.difficulty || "").toLowerCase();
           const difficulty = (rawDiff === "easy" ? "Easy" : rawDiff === "hard" ? "Hard" : "Medium") as Recommendation["difficulty"];
+          const focusIds = Array.isArray(o.focus_ids)
+            ? o.focus_ids.map(String).filter(Boolean)
+            : undefined;
           return {
             title: toStr(o.title),
             description: toStr(o.description),
             vision: toStr(o.vision),
             impact_bullets: bullets.map(toStr).filter((s) => s.length > 0),
             difficulty,
-            duration_weeks: Number(o.duration_weeks) || 12,
+            duration_weeks: clampDurationWeeks(Number(o.duration_weeks) || undefined),
             target_amount: Number(o.target_amount) || 0,
+            focus_ids: focusIds,
             action_items: items
               .map((it) => {
                 const i = (it ?? {}) as Record<string, unknown>;
                 const text = toStr(i.text ?? i);
                 if (!text) return null;
-                return { text, impact: Number(i.impact) || 1 } as ActionItem;
+                const rawCadence = String(i.cadence || "").toLowerCase();
+                const cadence = (["setup", "weekly", "verify"].includes(rawCadence)
+                  ? rawCadence
+                  : undefined) as ActionCadence | undefined;
+                return { text, impact: Number(i.impact) || 1, cadence } as ActionItem;
               })
               .filter((x): x is ActionItem => x !== null),
           };
@@ -353,7 +509,8 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
         answers: finalAnswers, 
         currentQIndex, 
         recommendations: recs,
-        lastGeneratedAt: lastGenAtRef.current
+        lastGeneratedAt: lastGenAtRef.current,
+        focuses: questFocuses,
       });
 
     } catch (err) {
@@ -364,89 +521,84 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
     }
   };
 
-  const selectPath = async (rec: Recommendation) => {
-    // If this is already our active mission, just jump back to it
+  const requestSelectPath = (rec: Recommendation) => {
     if (activeMission?.action_text === rec.title) {
       setPhase("mission");
       return;
     }
+    setPendingPlan(rec);
+  };
+
+  const confirmSelectPath = async () => {
+    const rec = pendingPlan;
+    if (!rec) return;
+
+    const weeks = clampDurationWeeks(rec.duration_weeks);
+    setPendingPlan(null);
 
     try {
       setLoading(true);
+      const story = buildMoneyStory(data, metrics, backendMetrics);
+      const pathFocuses = rec.focus_ids?.length
+        ? questFocuses.filter((f) => rec.focus_ids!.includes(f.id))
+        : questFocuses;
+      const focusesForMission = pathFocuses.length ? pathFocuses : questFocuses;
+
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${BACKEND_URL}/api/simulator/track`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           action_text: rec.title,
           action_items: rec.action_items,
-          target_amount: rec.target_amount
+          target_amount: rec.target_amount,
+          duration_weeks: weeks,
+          focuses: focusesForMission,
+          focus_ids: focusesForMission.map((f) => f.id),
+          vision: rec.vision,
+          difficulty: rec.difficulty,
+          start_snapshot: {
+            checkup: story.checkup.map((c) => ({
+              id: c.id,
+              title: c.title,
+              status: c.status,
+              summary: c.summary,
+            })),
+            metrics: {
+              healthScore: metrics.healthScore,
+              savingsRate: metrics.savingsRate,
+              netWorth: metrics.netWorth,
+              emergencyBufferMonths: backendMetrics.emergencyBufferMonths,
+              emiStressRatio: backendMetrics.emiStressRatio,
+            },
+          },
         })
       });
       if (!res.ok) throw new Error("Could not start mission");
-      toast.success("Mission activated! Loading strategy...");
+      toast.success("Plan started — your weekly practice begins now.");
       fetchActiveMission();
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not start mission");
     } finally {
       setLoading(false);
     }
   };
 
-  const toggleItem = async (index: number) => {
-    if (!activeMission || !activeMission.action_items) return;
-    
-    const newItems = [...activeMission.action_items];
-    const isCompleted = newItems[index].status === 'completed';
-    newItems[index] = { ...newItems[index], status: isCompleted ? 'pending' : 'completed' };
-    
-    const completedCount = newItems.filter(i => i.status === 'completed').length;
-    const newProgress = Math.round((completedCount / newItems.length) * 100);
-    const newStatus = newProgress === 100 ? "completed" : "in_progress";
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${BACKEND_URL}/api/simulator/track/${activeMission.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ 
-          action_items: newItems,
-          progress: newProgress,
-          status: newStatus
-        })
-      });
-      
-      if (res.ok) {
-        setActiveMission({ ...activeMission, action_items: newItems, progress: newProgress, status: newStatus });
-        if (newProgress === 100) toast.success("Quest Completed! Legend status achieved! 🏆");
-      }
-    } catch (err) {
-      toast.error("Failed to update mission progress");
+  const saveMissionCheckIn = async (checkIn: MissionCheckIn, progress: number, status: string) => {
+    if (!activeMission) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(`${BACKEND_URL}/api/simulator/track/${activeMission.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ check_in: checkIn, progress, status }),
+    });
+    if (!res.ok) {
+      toast.error("Failed to save check-in");
+      throw new Error("check-in failed");
     }
+    toast.success(progress >= 100 ? "Plan complete — nice work." : "Check-in saved.");
+    await fetchActiveMission();
   };
-
-  // Generate Graph Data
-  const generateChartData = () => {
-    if (!activeMission || !activeMission.target_amount) return [];
-    
-    const currentMonthlySavings = data.monthlyIncome - metrics.totalExpenses;
-    const target = activeMission.target_amount;
-    const dataPoints = [];
-
-    for (let i = 0; i <= 12; i++) {
-      dataPoints.push({
-        month: `M${i}`,
-        baseline: Math.round(currentMonthlySavings * i),
-        current: Math.round((currentMonthlySavings + (target * (activeMission.progress / 100))) * i),
-        p25: Math.round((currentMonthlySavings + (target * 0.25)) * i),
-        p50: Math.round((currentMonthlySavings + (target * 0.50)) * i),
-        target: Math.round((currentMonthlySavings + target) * i),
-      });
-    }
-    return dataPoints;
-  };
-
-  const chartData = generateChartData();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -457,24 +609,52 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
   }
 }, [currentInput]);
 
-  return (
-    <div className="relative border-4 border-foreground bg-card rounded-2xl overflow-hidden min-h-[500px] flex flex-col nb-shadow-lg" style={{
-      boxShadow: "10px 10px 0px 0px hsl(var(--foreground))"
-    }}>
-      {/* 2D Gamified Header */}
-      <div className="bg-foreground text-background p-4 border-b-4 border-foreground flex justify-between items-center relative overflow-hidden">
-        <div className="absolute inset-0 opacity-20 pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+CjxyZWN0IHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgZmlsbD0ibm9uZSI+PC9yZWN0Pgo8Y2lyY2xlIGN4PSIyIiBjeT0iMiIgcj0iMSIgZmlsbD0iI2ZmZmZmZiI+PC9jaXJjbGU+Cjwvc3ZnPg==')] border-repeat"></div>
-        <div className="flex items-center gap-3 z-10">
-          <Gamepad2 className="w-8 h-8 animate-pulse text-accent" />
-          <h2 className="font-black text-2xl tracking-widest uppercase">Wealth Quest</h2>
-        </div>
-      </div>
+  // Paths / mission are page surfaces — avoid card-in-card nesting.
+  // Intro / questions keep the framed "quest" shell.
+  const isPageSurface = phase === "paths" || phase === "mission";
 
-      {/* Mission Hub Phase */}
+  return (
+    <div
+      className={
+        isPageSurface
+          ? "relative min-h-[420px] flex flex-col"
+          : "relative border-4 border-foreground bg-card rounded-2xl overflow-hidden min-h-[500px] flex flex-col"
+      }
+      style={
+        isPageSurface
+          ? undefined
+          : { boxShadow: "10px 10px 0px 0px hsl(var(--foreground))" }
+      }
+    >
+      {isPageSurface ? (
+        <div className="flex items-center gap-2 mb-1 px-0.5">
+          <Gamepad2 className="w-4 h-4 text-accent" />
+          <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            Wealth Quest
+          </span>
+        </div>
+      ) : (
+        <div className="bg-foreground text-background p-4 border-b-4 border-foreground flex justify-between items-center relative overflow-hidden">
+          <div className="absolute inset-0 opacity-20 pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+CjxyZWN0IHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgZmlsbD0ibm9uZSI+PC9yZWN0Pgo8Y2lyY2xlIGN4PSIyIiBjeT0iMiIgcj0iMSIgZmlsbD0iI2ZmZmZmZiI+PC9jaXJjbGU+Cjwvc3ZnPg==')] border-repeat"></div>
+          <div className="flex items-center gap-3 z-10">
+            <Gamepad2 className="w-8 h-8 animate-pulse text-accent" />
+            <h2 className="font-black text-2xl tracking-widest uppercase">Wealth Quest</h2>
+          </div>
+        </div>
+      )}
+
       {(loading || isInitializing) && (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 z-10 bg-background/80 absolute inset-0 backdrop-blur-sm animate-in fade-in duration-300">
-           <div className="w-16 h-16 border-8 border-t-accent border-foreground rounded-full animate-spin speed-2x"></div>
-           <p className="mt-6 font-black uppercase text-xl animate-pulse tracking-widest">Calculating Trajectories...</p>
+        <div
+          className={`flex-1 flex flex-col items-center justify-center p-8 z-10 animate-in fade-in duration-300 ${
+            isPageSurface
+              ? "relative min-h-[280px]"
+              : "bg-background/80 absolute inset-0 backdrop-blur-sm"
+          }`}
+        >
+          <div className="w-16 h-16 border-8 border-t-accent border-foreground rounded-full animate-spin speed-2x" />
+          <p className="mt-6 font-black uppercase text-xl animate-pulse tracking-widest">
+            Calculating Trajectories...
+          </p>
         </div>
       )}
 
@@ -518,9 +698,9 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                    <button 
                     onClick={async () => {
                       setEligibilityPopupOpen(false);
-                      setLoading(true);
                       try {
                         if (activeMission) {
+                          setLoading(true);
                           const { data: { session } } = await supabase.auth.getSession();
                           const res = await fetch(`${BACKEND_URL}/api/simulator/track/${activeMission.id}`, {
                             method: "PUT",
@@ -532,10 +712,10 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                           });
                           if (!res.ok) throw new Error("Failed to abandon mission");
                           setActiveMission(null);
+                          setLoading(false);
                         }
                         lastGenAtRef.current = Date.now();
-                        await fetchQuestions(true);
-                        // State automatically saved by auto-save
+                        openFocusPicker(true);
                       } catch(err) {
                         toast.error("Error regenerating mission");
                         setLoading(false);
@@ -553,134 +733,47 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
       )}
 
       {phase === "mission" && activeMission && !isInitializing && (
-        <div className="flex-1 p-6 md:p-8 animate-in slide-in-from-right duration-500 overflow-y-auto">
-          <div className="flex flex-col lg:flex-row gap-8">
-            {/* Left: Action Items */}
-            <div className="flex-1 space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                   <h3 className="text-2xl font-black uppercase text-foreground leading-tight">{activeMission.action_text}</h3>
-                   <p className="text-muted-foreground font-bold text-sm">Target: +₹{activeMission.target_amount?.toLocaleString()}/mo savings</p>
-                </div>
-                {onMissionCleared && (
-                   <button 
-                    onClick={() => {
-                      setPhase("paths");
-                      if (onMissionCleared) onMissionCleared();
-                    }}
-                    className="nb-button-outline p-2 hover:bg-accent hover:text-background transition-colors"
-                    title="Back to Selection"
-                   >
-                     <ArrowLeft className="w-5 h-5" />
-                   </button>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <h4 className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                  <Swords className="w-4 h-4" /> Action Checklist
-                </h4>
-                {activeMission.action_items?.map((item, i) => (
-                  <button 
-                    key={i}
-                    onClick={() => toggleItem(i)}
-                    className={`w-full p-4 rounded-xl border-2 border-foreground flex items-center gap-4 transition-all duration-200 text-left ${item.status === 'completed' ? 'bg-success/20 opacity-70' : 'bg-background hover:bg-muted'}`}
-                  >
-                    {item.status === 'completed' ? <CheckSquare className="w-6 h-6 text-success" /> : <Square className="w-6 h-6" />}
-                    <span className={`font-bold ${item.status === 'completed' ? 'line-through' : ''}`}>{item.text}</span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="bg-secondary/10 border-dashed py-4 px-6 mt-8">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm font-black uppercase">Progression</span>
-                  <span className="text-sm font-black">{activeMission.progress}%</span>
-                </div>
-                <div className="w-full h-4 bg-muted border-2 border-foreground rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-primary transition-all duration-1000 ease-out" 
-                    style={{ width: `${activeMission.progress}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Weekly Refresh Option */}
-              <div className="flex gap-4 mt-8 pt-8 border-t-4 border-dashed border-foreground/10">
-                <div className="flex-1">
-                   <p className="text-xs font-bold text-muted-foreground uppercase tracking-tight mb-2">Goal shifted? Situation changed?</p>
-                   <button
-                    onClick={async () => {
-                      try {
-                        setLoading(true);
-                        // Check cached data first to save API calls
-                        if (eligibilityData) {
-                          setLoading(false);
-                          setEligibilityPopupOpen(true);
-                          return;
-                        }
-                        
-                        const { data: { session } } = await supabase.auth.getSession();
-                        const res = await fetch(`${BACKEND_URL}/api/simulator/eligibility`, {
-                          headers: { "Authorization": `Bearer ${session?.access_token}` }
-                        });
-                        
-                        if (res.ok) {
-                          const data = await res.json();
-                          setEligibilityData(data);
-                          setEligibilityPopupOpen(true);
-                        } else {
-                          toast.error("Could not verify status");
-                        }
-                      } catch(err) {
-                        console.error(err);
-                      } finally {
-                        setLoading(false);
-                      }
-                    }}
-                    className="w-full py-4 border-2 border-dashed border-foreground bg-accent/10 hover:bg-accent/20 font-black uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2 nb-button"
-                   >
-                     <Activity className="w-4 h-4" /> Generate New Suggestions
-                   </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Projections */}
-            <div className="flex-1 space-y-4">
-              <h4 className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2 px-2">
-                <TrendingUp className="w-4 h-4" /> 12-Month Impact Analysis
-              </h4>
-              <div className="h-[300px] w-full bg-background border-4 border-foreground rounded-xl p-4 nb-shadow-sm">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground))" opacity={0.2} />
-                    <XAxis dataKey="month" stroke="currentColor" fontSize={10} fontWeight="bold" />
-                    <YAxis stroke="currentColor" fontSize={10} fontWeight="bold" tickFormatter={(v) => `₹${(v/1000)}k`} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '2px solid hsl(var(--foreground))', borderRadius: '8px', fontWeight: 'bold' }}
-                      formatter={(v) => `₹${v.toLocaleString()}`}
-                    />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', paddingTop: '10px' }} />
-                    <Line type="monotone" dataKey="baseline" name="Baseline" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                    <Line type="monotone" dataKey="target" name="100% Win" stroke="#22c55e" strokeWidth={3} dot={false} />
-                    <Line type="monotone" dataKey="current" name="Live Path" stroke="#3b82f6" strokeWidth={4} isAnimationActive={true} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-success/10 border-2 border-foreground rounded-lg text-center">
-                  <p className="text-[10px] font-black uppercase text-muted-foreground">Total Gain (1yr)</p>
-                  <p className="text-lg font-black italic">+₹{(activeMission.target_amount || 0) * 12}</p>
-                </div>
-                <div className="p-3 bg-primary/10 border-2 border-foreground rounded-lg text-center">
-                  <p className="text-[10px] font-black uppercase text-muted-foreground">Days Active</p>
-                  <p className="text-lg font-black">{Math.max(0, Math.floor((new Date().getTime() - new Date(activeMission.start_date || new Date()).getTime()) / (1000 * 3600 * 24)))}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <MissionHub
+          mission={activeMission}
+          fallbackFocuses={questFocuses}
+          data={data}
+          metrics={metrics}
+          backendMetrics={backendMetrics}
+          onBack={
+            onMissionCleared
+              ? () => {
+                  setPhase("paths");
+                  onMissionCleared();
+                }
+              : () => setPhase("paths")
+          }
+          onSaveCheckIn={saveMissionCheckIn}
+          onRefreshData={onRefreshData}
+          onRequestRegen={async () => {
+            try {
+              setLoading(true);
+              if (eligibilityData) {
+                setLoading(false);
+                setEligibilityPopupOpen(true);
+                return;
+              }
+              const { data: { session } } = await supabase.auth.getSession();
+              const res = await fetch(`${BACKEND_URL}/api/simulator/eligibility`, {
+                headers: { Authorization: `Bearer ${session?.access_token}` },
+              });
+              if (res.ok) {
+                setEligibilityData(await res.json());
+                setEligibilityPopupOpen(true);
+              } else {
+                toast.error("Could not verify status");
+              }
+            } catch (err) {
+              console.error(err);
+            } finally {
+              setLoading(false);
+            }
+          }}
+        />
       )}
 
       {/* Intro Phase */}
@@ -689,11 +782,23 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
           <Ghost className="w-20 h-20 text-accent mb-6 animate-bounce" />
           <h3 className="text-3xl font-black mb-1">New Campaign</h3>
           <p className="text-muted-foreground font-bold mb-8 max-w-sm">Answer the Pilot's questions to unlock high-impact financial missions.</p>
-          <button onClick={() => fetchQuestions(false)} className="nb-button text-xl px-12 py-4 flex items-center gap-3 hover:scale-105 transition-transform">
+          <button onClick={() => openFocusPicker(false)} className="nb-button text-xl px-12 py-4 flex items-center gap-3 hover:scale-105 transition-transform">
              <PlayCircle className="w-6 h-6" /> Start Quest
           </button>
         </div>
       )}
+
+      <QuestFocusPicker
+        open={focusPickerOpen}
+        data={data}
+        metrics={metrics}
+        backendMetrics={backendMetrics}
+        onClose={() => {
+          setFocusPickerOpen(false);
+          setLoading(false);
+        }}
+        onConfirm={(userFocuses) => fetchQuestions(userFocuses, pendingForceRefresh)}
+      />
 
       {/* Questions Phase */}
       {phase === "questions" && !loading && !isInitializing && questions.length > 0 && (
@@ -784,7 +889,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                 {questions[currentQIndex].options.map((opt) => (
                   <button
                     key={opt}
-                    disabled={!!currentInput}
+                    type="button"
                     onClick={() => {
                       setCurrentInput(opt);
                       // Short delay so user sees the chip selected before auto-submit
@@ -827,7 +932,7 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
                       submitAnswer();
                     }
                   }}
-                  placeholder="Talk to the Pilot..."
+                  placeholder="Or type your answer..."
                   rows={1}
                   className="w-full text-lg p-6 pr-16 rounded-xl border-4 border-foreground bg-background font-medium focus:outline-none focus:ring-4 focus:ring-accent/50 focus:border-accent transition-all nb-shadow-sm resize-none overflow-hidden max-h-[200px] overflow-y-auto"
                   autoFocus
@@ -847,63 +952,288 @@ export function ScenarioSimulator({ data, focusedMissionId, onMissionCleared }: 
 
       {/* Paths Phase */}
       {phase === "paths" && !loading && !isInitializing && (
-        <div className="flex-1 flex flex-col p-4 md:p-8 z-10 bg-gradient-to-br from-card to-secondary/10 overflow-y-auto">
-            <h3 className="text-2xl font-black text-center mb-6 uppercase tracking-widest">Select Your Specialization</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="flex-1 flex flex-col pt-3 md:pt-4 z-10 md:overflow-y-auto min-h-[calc(100dvh-11rem)] md:min-h-0">
+          <div className="mb-4 md:mb-8 space-y-1 md:text-center shrink-0">
+            <h3 className="text-2xl md:text-3xl font-black tracking-tight">
+              {QUEST_COPY.pathsTitle}
+            </h3>
+            <p className="text-sm text-muted-foreground font-medium max-w-lg md:mx-auto leading-snug">
+              <span className="md:hidden">{QUEST_COPY.pathsSubtitleMobile}</span>
+              <span className="hidden md:inline">{QUEST_COPY.pathsSubtitle}</span>
+            </p>
+          </div>
+
+          {/* Mobile: snap picker + detail panel fills remaining viewport */}
+          <div className="md:hidden flex flex-col flex-1 min-h-0 gap-4">
+            <div
+              ref={planCarouselRef}
+              onScroll={() => {
+                if (planScrollSettleTimer.current) clearTimeout(planScrollSettleTimer.current);
+                planScrollSettleTimer.current = setTimeout(() => {
+                  settleFocusedPlanFromCarousel();
+                }, 90);
+              }}
+              className="flex gap-3 overflow-x-auto snap-x snap-mandatory -mx-4 px-4 py-1 no-scrollbar shrink-0"
+            >
               {recommendations.map((rec, i) => {
                 const difficultyColors = {
-                  "Hard": "bg-danger/20 border-danger text-danger",
-                  "Medium": "bg-accent/20 border-accent text-accent",
-                  "Easy": "bg-success/20 border-success text-success"
+                  Hard: "bg-danger/15 text-danger",
+                  Medium: "bg-accent/15 text-accent",
+                  Easy: "bg-success/15 text-success",
                 };
-                const diffStyle = difficultyColors[rec.difficulty] || difficultyColors["Medium"];
+                const diffStyle = difficultyColors[rec.difficulty] || difficultyColors.Medium;
                 const isActive = activeMission?.action_text === rec.title;
-                const isDisabled = activeMission && !isActive;
+                const weeks = clampDurationWeeks(rec.duration_weeks);
+                const isFocused = focusedPlanIndex === i;
 
                 return (
-                  <div 
-                    key={i} 
-                    className={`group relative flex flex-col bg-background border-4 border-foreground p-8 rounded-xl transition-all duration-300 overflow-hidden ${isDisabled ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]'}`} 
+                  <button
+                    key={`m-${i}`}
+                    type="button"
+                    data-plan-card
+                    onClick={() => focusPlanAtIndex(i)}
+                    className={`flex flex-col text-left w-[min(72vw,16rem)] shrink-0 snap-center rounded-2xl p-4 border transition-colors duration-200 ${
+                      isFocused
+                        ? "bg-card border-foreground shadow-sm"
+                        : "bg-muted/40 border-transparent opacity-70"
+                    } ${isActive ? "ring-2 ring-success/60" : ""}`}
                   >
-                    {/* Vision Banner */}
-                    <div className={`absolute top-0 left-0 right-0 text-background text-[10px] font-black uppercase py-2 text-center tracking-widest translate-y-0 transition-colors ${isActive ? 'bg-success' : 'bg-foreground group-hover:bg-primary'}`}>
-                       {isActive ? "Currently Active Specialization" : (rec.vision || "Current: Vulnerable -> Future: Shielded")}
+                    <div className={`inline-flex self-start px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide mb-2 ${diffStyle}`}>
+                      {rec.difficulty} · {weeks} wks
                     </div>
-
-                    <div className="relative z-10 flex-1 mt-8">
-                      <div className={`inline-block px-3 py-1 border-2 rounded-full text-[10px] font-black uppercase mb-4 ${diffStyle}`}>
-                        {rec.difficulty} ({rec.duration_weeks} Weeks)
-                      </div>
-                      <h4 className="text-2xl font-black mb-4 leading-tight">{rec.title}</h4>
-                      <p className="text-sm font-bold text-muted-foreground leading-relaxed mb-6 border-l-4 border-foreground/10 pl-4">
-                        {rec.description}
-                      </p>
-
-                      {/* Vision Details - Bullet Points */}
-                      <div className="space-y-3 mb-8">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-foreground/50">Mission Benefits:</p>
-                        {(rec.impact_bullets || ["Financial safety", "Stress reduction", "Asset growth"]).map((bullet, idx) => (
-                           <div key={idx} className="flex items-start gap-2 group/bullet">
-                             <div className="w-1.5 h-1.5 rounded-full bg-accent mt-1.5 shrink-0" />
-                             <p className="text-xs font-bold leading-tight uppercase tracking-tight">{bullet}</p>
-                           </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <button 
-                      onClick={() => !isDisabled && selectPath(rec)}
-                      disabled={isDisabled}
-                      className={`relative z-10 mt-auto w-full py-5 border-4 border-foreground font-black uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2 ${isActive ? 'bg-success text-success-foreground' : 'bg-foreground text-background group-hover:bg-primary group-hover:text-foreground nb-button'}`}
-                    >
-                       {isActive ? "Currently Active - Resume" : isDisabled ? "Locked" : "Accept specialization"} <ArrowRight className="w-4 h-4" />
-                    </button>
-                  </div>
+                    <h4 className="text-base font-black leading-snug line-clamp-2">{rec.title}</h4>
+                  </button>
                 );
               })}
             </div>
+
+            {(() => {
+              const rec = recommendations[focusedPlanIndex] ?? recommendations[0];
+              if (!rec) return null;
+              const isActive = activeMission?.action_text === rec.title;
+              const isDisabled = !!(activeMission && !isActive);
+              const weeks = clampDurationWeeks(rec.duration_weeks);
+              const cardFocuses = rec.focus_ids?.length
+                ? questFocuses.filter((f) => rec.focus_ids!.includes(f.id))
+                : questFocuses;
+              const bullets = (rec.impact_bullets || []).slice(0, 3);
+              const slideClass =
+                detailSlideDir === "right"
+                  ? "slide-in-from-right-6"
+                  : "slide-in-from-left-6";
+
+              return (
+                <div className="flex-1 flex flex-col min-h-0 rounded-2xl border border-border bg-card/80 overflow-hidden">
+                  <div
+                    key={rec.title}
+                    className={`flex-1 flex flex-col min-h-0 p-5 animate-in fade-in ${slideClass} duration-300`}
+                  >
+                    <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pb-4">
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                          {rec.difficulty} · {weeks} weeks · Plan {focusedPlanIndex + 1} of{" "}
+                          {recommendations.length}
+                        </p>
+                        <h4 className="text-lg font-black leading-snug">{rec.title}</h4>
+                      </div>
+
+                      {rec.vision && (
+                        <p className="text-xs text-muted-foreground leading-relaxed bg-muted/50 rounded-xl px-3 py-2.5">
+                          {rec.vision}
+                        </p>
+                      )}
+                      <p className="text-sm text-foreground/85 leading-relaxed">{rec.description}</p>
+
+                      {cardFocuses.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {cardFocuses.map((f) => (
+                            <span
+                              key={f.id}
+                              className="text-[10px] font-semibold tracking-wide px-2 py-0.5 rounded-full border border-border bg-muted/40"
+                            >
+                              {f.title}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {bullets.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                            {QUEST_COPY.planBenefits}
+                          </p>
+                          {bullets.map((bullet, idx) => (
+                            <div key={idx} className="flex items-start gap-2.5">
+                              <div className="w-1.5 h-1.5 rounded-full bg-accent mt-1.5 shrink-0" />
+                              <p className="text-sm leading-snug">{bullet}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="shrink-0 flex flex-col gap-2 pt-2 border-t border-border/60">
+                      {(rec.impact_bullets?.length ?? 0) > 3 && (
+                        <button
+                          type="button"
+                          onClick={() => setDetailPlan(rec)}
+                          className="text-xs font-bold text-muted-foreground inline-flex items-center gap-1 self-center py-1"
+                        >
+                          {QUEST_COPY.seeDetails} <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => !isDisabled && requestSelectPath(rec)}
+                        disabled={isDisabled}
+                        className={`w-full py-3.5 rounded-xl text-xs font-black uppercase tracking-wide flex items-center justify-center gap-2 disabled:opacity-45 ${
+                          isActive
+                            ? "bg-success text-success-foreground"
+                            : "bg-foreground text-background"
+                        }`}
+                      >
+                        {isActive
+                          ? QUEST_COPY.resumePlan
+                          : isDisabled
+                            ? QUEST_COPY.lockedPlan
+                            : QUEST_COPY.startPlan}{" "}
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Desktop: full-detail 3-column grid */}
+          <div className="hidden md:grid md:grid-cols-3 gap-8">
+            {recommendations.map((rec, i) => {
+              const difficultyColors = {
+                Hard: "bg-danger/20 border-danger text-danger",
+                Medium: "bg-accent/20 border-accent text-accent",
+                Easy: "bg-success/20 border-success text-success",
+              };
+              const diffStyle = difficultyColors[rec.difficulty] || difficultyColors.Medium;
+              const isActive = activeMission?.action_text === rec.title;
+              const isDisabled = !!(activeMission && !isActive);
+              const weeks = clampDurationWeeks(rec.duration_weeks);
+              const cardFocuses = rec.focus_ids?.length
+                ? questFocuses.filter((f) => rec.focus_ids!.includes(f.id))
+                : questFocuses;
+
+              return (
+                <div
+                  key={`d-${i}`}
+                  className={`group relative flex flex-col bg-background border-4 border-foreground p-8 rounded-xl transition-all duration-300 overflow-hidden ${
+                    isDisabled
+                      ? "opacity-50 grayscale cursor-not-allowed"
+                      : "hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]"
+                  }`}
+                >
+                  <div
+                    className={`absolute top-0 left-0 right-0 text-background text-[10px] font-black uppercase py-2 text-center tracking-widest translate-y-0 transition-colors ${
+                      isActive ? "bg-success" : "bg-foreground group-hover:bg-primary"
+                    }`}
+                  >
+                    {isActive ? QUEST_COPY.activeBadge : rec.vision || "Current → Future"}
+                  </div>
+
+                  <div className="relative z-10 flex-1 mt-8">
+                    <div className={`inline-block px-3 py-1 border-2 rounded-full text-[10px] font-black uppercase mb-4 ${diffStyle}`}>
+                      {rec.difficulty} ({weeks} weeks)
+                    </div>
+                    <h4 className="text-2xl font-black mb-4 leading-tight">{rec.title}</h4>
+                    <p className="text-sm font-bold text-muted-foreground leading-relaxed mb-4 border-l-4 border-foreground/10 pl-4">
+                      {rec.description}
+                    </p>
+
+                    {cardFocuses.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-4">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground w-full">
+                          {QUEST_COPY.solvesLabel}
+                        </span>
+                        {cardFocuses.map((f) => (
+                          <span
+                            key={f.id}
+                            className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border-2 border-foreground bg-muted"
+                          >
+                            {f.title}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="space-y-3 mb-8">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-foreground/50">
+                        {QUEST_COPY.planBenefits}
+                      </p>
+                      {(rec.impact_bullets || []).map((bullet, idx) => (
+                        <div key={idx} className="flex items-start gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-accent mt-1.5 shrink-0" />
+                          <p className="text-xs font-bold leading-tight uppercase tracking-tight">{bullet}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => !isDisabled && requestSelectPath(rec)}
+                    disabled={isDisabled}
+                    className={`relative z-10 mt-auto w-full py-5 border-4 border-foreground font-black uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2 ${
+                      isActive
+                        ? "bg-success text-success-foreground"
+                        : "bg-foreground text-background group-hover:bg-primary group-hover:text-foreground nb-button"
+                    }`}
+                  >
+                    {isActive ? QUEST_COPY.resumePlan : isDisabled ? QUEST_COPY.lockedPlan : QUEST_COPY.startPlan}{" "}
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
+
+      <PlanDetailSheet
+        open={!!detailPlan}
+        plan={detailPlan}
+        focuses={
+          detailPlan
+            ? (detailPlan.focus_ids?.length
+                ? questFocuses.filter((f) => detailPlan.focus_ids!.includes(f.id))
+                : questFocuses
+              ).map((f) => ({ id: f.id, title: f.title }))
+            : []
+        }
+        isActive={!!detailPlan && activeMission?.action_text === detailPlan.title}
+        isDisabled={!!(detailPlan && activeMission && activeMission.action_text !== detailPlan.title)}
+        onClose={() => setDetailPlan(null)}
+        onStart={() => {
+          if (!detailPlan) return;
+          const plan = detailPlan;
+          setDetailPlan(null);
+          requestSelectPath(plan);
+        }}
+      />
+
+      <ConfirmModal
+        open={!!pendingPlan}
+        title={QUEST_COPY.confirmStartTitle}
+        description={
+          pendingPlan
+            ? QUEST_COPY.confirmStart(clampDurationWeeks(pendingPlan.duration_weeks))
+            : null
+        }
+        confirmLabel={QUEST_COPY.confirmStartConfirm}
+        cancelLabel={QUEST_COPY.confirmStartCancel}
+        variant="primary"
+        busy={loading}
+        onCancel={() => !loading && setPendingPlan(null)}
+        onConfirm={() => void confirmSelectPath()}
+      />
 
     </div>
   );

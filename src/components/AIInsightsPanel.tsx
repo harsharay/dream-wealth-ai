@@ -46,9 +46,16 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
     }
   };
 
+  // Stabilize deps: `user` object identity churns on every Supabase auth event
+  // (getSession + onAuthStateChange), which previously re-fired this effect 2–3×
+  // and launched parallel POSTs before cache could save — multiplying LLM spend.
+  const dataKey = JSON.stringify(data);
+  const metricsKey = JSON.stringify(metrics);
+  const userId = user?.id;
+
   useEffect(() => {
     let cancelled = false;
-    
+
     setStatus("loading");
     setSections([]);
 
@@ -65,7 +72,7 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
         setSections(result.sections);
         setWarnings(result.warnings || []);
         setStatus("success");
-        fetchHistory(); // fetch history seamlessly after current load
+        fetchHistory();
       })
       .catch((err: Error) => {
         if (cancelled) return;
@@ -73,11 +80,12 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
         setErrorMsg(err.message);
         setSections(generateFallbackInsights(metrics, data));
         setStatus("error");
-        fetchHistory(); // We try to fetch history anyway
+        fetchHistory();
       });
 
     return () => { cancelled = true; };
-  }, [JSON.stringify(data), JSON.stringify(metrics), user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: keys above capture content
+  }, [dataKey, metricsKey, userId]);
 
   const displayedSections = historyIndex === 0 ? sections : history[historyIndex - 1]?.insight_data.sections;
   const displayedWarnings = historyIndex === 0 ? warnings : history[historyIndex - 1]?.insight_data.warnings;

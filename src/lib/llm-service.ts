@@ -29,28 +29,43 @@ const getAuthToken = async () => {
     return session?.access_token || "";
 };
 
+/** Share one in-flight POST per dataHash so React effect re-runs don't multiply LLM spend. */
+const insightsInFlight = new Map<string, Promise<LLMInsightsResponse>>();
+
 export async function fetchAIInsights(
     data: FinancialData,
     metrics: FinancialMetrics
 ): Promise<LLMInsightsResponse> {
     const dataHash = hash(data);
-    const token = await getAuthToken();
+    const existing = insightsInFlight.get(dataHash);
+    if (existing) return existing;
 
-    const res = await fetch(`${BACKEND_URL}/api/insights`, {
-        method: "POST",
-        headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ data, metrics, dataHash }),
-    });
+    const request = (async () => {
+        const token = await getAuthToken();
 
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(err.message || err.error || `Backend responded with ${res.status}`);
+        const res = await fetch(`${BACKEND_URL}/api/insights`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ data, metrics, dataHash }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Unknown error" }));
+            throw new Error(err.message || err.error || `Backend responded with ${res.status}`);
+        }
+
+        return await res.json() as LLMInsightsResponse;
+    })();
+
+    insightsInFlight.set(dataHash, request);
+    try {
+        return await request;
+    } finally {
+        insightsInFlight.delete(dataHash);
     }
-
-    return await res.json() as LLMInsightsResponse;
 }
 
 export async function saveFinancialRecords(data: FinancialData): Promise<BackendFinancialMetrics> {

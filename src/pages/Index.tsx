@@ -6,22 +6,13 @@ import { toast } from "sonner";
 import type { BackendFinancialMetrics, FinancialData } from "@/types/finance";
 import { saveFinancialRecords, loadFinancialRecords } from "@/lib/llm-service";
 import { calculateMetrics, emptyFinancialData } from "@/lib/financial-engine";
-import { HealthScoreGauge } from "@/components/HealthScoreGauge";
-import { EmergencyBufferGauge } from "@/components/EmergencyBufferGauge";
-import { FIProgressWidget } from "@/components/FIProgressWidget";
-import { EmiStressGauge } from "@/components/EmiStressGauge";
-import { MetricCards } from "@/components/MetricCards";
-import { MoneyFlowSankey } from "@/components/MoneyFlowSankey";
-import { AssetChart } from "@/components/AssetChart";
-import { LiabilityChart } from "@/components/LiabilityChart";
-import { WarningsPanel } from "@/components/WarningsPanel";
 import { FinancialForm } from "@/components/FinancialForm";
 import { FinancialChatOnboarding } from "@/components/FinancialChatOnboarding";
+import { MoneyStoryOverview } from "@/components/MoneyStoryOverview";
 import { AIInsightsPanel } from "@/components/AIInsightsPanel";
 import { ScenarioSimulator } from "@/components/ScenarioSimulator";
 import { SimulatorLockScreen } from "@/components/SimulatorLockScreen";
 import { ProUpgradeModal } from "@/components/ProUpgradeModal";
-import { ActionTracker } from "@/components/ActionTracker";
 import { PremiumUpsell } from "@/components/PremiumUpsell";
 import {
   LayoutDashboard,
@@ -284,7 +275,7 @@ const Index = () => {
   if (!financialData || isEditing) {
     // Shared top bar for the onboarding/editing screens
     const OnboardingTopBar = () => (
-      <div className="w-full max-w-4xl flex items-center justify-between mb-8">
+      <div className="w-full max-w-4xl shrink-0 flex items-center justify-between mb-8">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-primary border-2 border-foreground flex items-center justify-center relative"
             style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}>
@@ -328,7 +319,13 @@ const Index = () => {
     );
 
     return (
-      <div className="min-h-screen bg-background p-4 flex flex-col items-center relative overflow-hidden">
+      <div
+        className={`bg-background p-4 flex flex-col items-center relative ${
+          !isEditing && onboardingMode === "chat"
+            ? "h-dvh overflow-hidden"
+            : "min-h-screen overflow-x-hidden"
+        }`}
+      >
         {fetchingData && (
           <div className="absolute top-0 left-0 right-0 h-1 z-50 overflow-hidden bg-muted">
             <div className="h-full bg-primary animate-progress-indeterminate shadow-[0_0_10px_rgba(var(--primary),0.5)]" />
@@ -339,8 +336,8 @@ const Index = () => {
 
         {/* ── Welcome chooser ─────────────────────────────────────────── */}
         {!isEditing && onboardingMode === "welcome" && (
-          <div className="w-full max-w-lg animate-in fade-in slide-in-from-bottom-4 duration-400">
-            <div className="mb-8 text-center">
+          <div className="w-full max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-400">
+            <div className="mt-[100px] mb-[50px] text-center">
               <h2 className="text-3xl font-black text-foreground mb-2">
                 Welcome, {user.user_metadata.full_name?.split(" ")[0] || "Pilot"}! 👋
               </h2>
@@ -349,28 +346,39 @@ const Index = () => {
               </p>
             </div>
 
-            <div className="space-y-4">
-              {/* Quick Start — primary choice */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+              {/* Quick Start — AI Primary Choice */}
               <button
                 type="button"
                 onClick={() => setOnboardingMode("chat")}
-                className="w-full nb-card hover:bg-muted/60 transition-colors text-left flex items-start gap-4 group"
-                style={{ boxShadow: "4px 4px 0px 0px hsl(var(--foreground))" }}
+                className="group relative flex flex-col justify-between text-left nb-card overflow-hidden hover:-translate-y-1 transition-transform duration-300 ease-out cursor-pointer"
               >
-                <div className="shrink-0 w-12 h-12 rounded-xl bg-primary border-2 border-foreground flex items-center justify-center"
-                  style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}>
-                  <MessageSquare className="w-6 h-6 text-primary-foreground" />
+                <div className="absolute top-0 right-0 bg-primary text-primary-foreground font-black text-[10px] uppercase tracking-wider px-3 py-1 border-b-2 border-l-2 border-foreground rounded-bl-lg">
+                  Recommended • 2 Min
                 </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-black text-foreground text-lg">Quick Start</span>
-                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-accent/20 text-accent border border-accent/30">
-                      Recommended
-                    </span>
+
+                <div>
+                  <div className="flex items-center gap-3 mb-5">
+                    <div
+                      className="w-12 h-12 rounded-xl bg-primary border-2 border-foreground text-primary-foreground flex items-center justify-center group-hover:bg-accent group-hover:text-accent-foreground transition-colors duration-300 ease-out"
+                      style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}
+                    >
+                      <MessageSquare className="w-6 h-6" />
+                    </div>
                   </div>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    Answer a few quick questions in a guided chat. Takes about 2 minutes with smart defaults pre-filled for you.
+
+                  <h3 className="font-black text-foreground text-xl tracking-tight mb-1.5">
+                    AI Copilot Mode
+                  </h3>
+
+                  <p className="text-sm font-medium text-muted-foreground leading-relaxed">
+                    Let Gemini AI ask a few brutally honest questions to diagnose your financial health with smart pre-filled defaults.
                   </p>
+                </div>
+
+                <div className="mt-6 pt-3 border-t-2 border-dashed border-border flex items-center justify-between text-xs font-black uppercase tracking-wider text-foreground group-hover:text-primary transition-colors duration-300 ease-out">
+                  <span>Get Honesty Check</span>
+                  <span className="font-black text-base group-hover:translate-x-1 transition-transform duration-300 ease-out">→</span>
                 </div>
               </button>
 
@@ -378,18 +386,30 @@ const Index = () => {
               <button
                 type="button"
                 onClick={() => setOnboardingMode("form")}
-                className="w-full nb-card hover:bg-muted/60 transition-colors text-left flex items-start gap-4 group"
-                style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}
+                className="group relative flex flex-col justify-between text-left nb-card overflow-hidden hover:-translate-y-1 transition-transform duration-300 ease-out cursor-pointer"
               >
-                <div className="shrink-0 w-12 h-12 rounded-xl bg-muted border-2 border-foreground flex items-center justify-center"
-                  style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}>
-                  <TableProperties className="w-6 h-6 text-foreground" />
-                </div>
-                <div className="flex-1">
-                  <span className="font-black text-foreground text-lg block mb-1">Enter Manually</span>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    Fill in all fields directly. Great if you have your numbers handy and want full control.
+                <div>
+                  <div className="flex items-center gap-3 mb-5">
+                    <div
+                      className="w-12 h-12 rounded-xl bg-muted border-2 border-foreground text-foreground flex items-center justify-center group-hover:bg-foreground group-hover:text-background transition-colors duration-300 ease-out"
+                      style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}
+                    >
+                      <TableProperties className="w-6 h-6" />
+                    </div>
+                  </div>
+
+                  <h3 className="font-black text-foreground text-xl tracking-tight mb-1.5">
+                    Enter Manually
+                  </h3>
+
+                  <p className="text-sm font-medium text-muted-foreground leading-relaxed">
+                    Raw numbers only. Directly fill in your income, debts, and assets if you prefer full control over your audit.
                   </p>
+                </div>
+
+                <div className="mt-6 pt-3 border-t-2 border-dashed border-border flex items-center justify-between text-xs font-black uppercase tracking-wider text-foreground group-hover:text-primary transition-colors duration-300 ease-out">
+                  <span>Open Ledger Form</span>
+                  <span className="font-black text-base group-hover:translate-x-1 transition-transform duration-300 ease-out">→</span>
                 </div>
               </button>
             </div>
@@ -398,7 +418,7 @@ const Index = () => {
 
         {/* ── Chat onboarding ──────────────────────────────────────────── */}
         {!isEditing && onboardingMode === "chat" && (
-          <div className="w-full max-w-xl animate-in fade-in duration-300">
+          <div className="w-full max-w-xl flex-1 min-h-0 animate-in fade-in duration-300">
             <FinancialChatOnboarding onDone={handleChatDone} />
           </div>
         )}
@@ -585,49 +605,15 @@ const Index = () => {
 
       <main className="max-w-7xl mx-auto p-4 md:p-8">
         {dashboardTab === "overview" && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-              <div className="lg:col-span-12">
-                <MetricCards metrics={metrics} />
-              </div>
-
-              <div className="lg:col-span-6">
-                <HealthScoreGauge score={metrics.healthScore} />
-              </div>
-              <div className="lg:col-span-6">
-                <EmergencyBufferGauge emergencyBufferMonths={backendMetrics.emergencyBufferMonths} />
-              </div>
-
-              {backendMetrics.fiMetricAvailable && backendMetrics.fiRatio !== null && backendMetrics.investedAssets !== null && backendMetrics.targetRetirementCorpus !== null && (
-                <div className="lg:col-span-6">
-                  <FIProgressWidget
-                    fiRatio={backendMetrics.fiRatio}
-                    investedAssets={backendMetrics.investedAssets}
-                    targetRetirementCorpus={backendMetrics.targetRetirementCorpus}
-                    estimatedRetirementAge={backendMetrics.estimatedRetirementAge}
-                  />
-                </div>
-              )}
-              <div className="lg:col-span-6">
-                <EmiStressGauge emiStressRatio={backendMetrics.emiStressRatio} />
-              </div>
-
-              <div className="lg:col-span-12">
-                <MoneyFlowSankey data={financialData} />
-              </div>
-
-              <div className="lg:col-span-6 h-full">
-                <AssetChart assets={financialData.assets} />
-              </div>
-              <div className="lg:col-span-6 h-full">
-                <LiabilityChart liabilities={financialData.liabilities} />
-              </div>
-
-              <div className="lg:col-span-12">
-                <WarningsPanel warnings={metrics.warnings} setRedirect={() => setDashboardTab("insights")} />
-              </div>
-            </div>
-          </div>
+          <MoneyStoryOverview
+            data={financialData}
+            metrics={metrics}
+            backendMetrics={backendMetrics}
+            isPaidUser={isPaidUser}
+            onOpenInsights={() => setDashboardTab("insights")}
+            onOpenSimulator={() => setDashboardTab("simulator")}
+            onUpgrade={() => setIsUpgradeModalOpen(true)}
+          />
         )}
 
         {dashboardTab === "insights" && (
@@ -643,9 +629,14 @@ const Index = () => {
                 <SimulatorLockScreen />
               ) : (
                 <ScenarioSimulator 
-                  data={financialData} 
+                  data={financialData}
+                  backendMetrics={backendMetrics}
                   focusedMissionId={activeMissionId} 
                   onMissionCleared={() => setActiveMissionId(null)}
+                  onRefreshData={() => {
+                    setIsEditing(true);
+                    setOnboardingMode("form");
+                  }}
                 />
               )}
             </div>
