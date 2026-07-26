@@ -114,17 +114,26 @@ const Index = () => {
       setOnboardingMode(savedState.onboardingMode);
       setChatDraftData(savedState.chatDraftData);
       setActiveMissionId(savedState.activeMissionId);
-      fetchedRef.current = !!savedState.financialData;
+      // Skip re-fetch if we already have records OR user is mid-onboarding.
+      // Otherwise a null /api/financial-records response resets chat → welcome.
+      const midOnboarding =
+        savedState.onboardingMode === "chat" || savedState.onboardingMode === "form";
+      fetchedRef.current = !!savedState.financialData || midOnboarding;
     }
 
     setHasHydratedLocalState(true);
   }, [user?.id]);
 
-  // Fetch data from Supabase on load
+  // Fetch saved records once after hydrate. Never interrupt an in-progress onboarding flow.
   const fetchData = useCallback(async () => {
-    // If we're already fetching, or we're in edit mode, or we've already fetched, don't sync.
-    if (!user || !hasHydratedLocalState || fetchedRef.current || isEditing) return;
+    if (!user?.id || !hasHydratedLocalState || fetchedRef.current || isEditing) return;
+    if (onboardingMode === "chat" || onboardingMode === "form") {
+      fetchedRef.current = true;
+      return;
+    }
 
+    // Lock immediately so concurrent auth/user churn cannot start a second fetch.
+    fetchedRef.current = true;
     setFetchingData(true);
     try {
       const payload = await loadFinancialRecords();
@@ -132,22 +141,26 @@ const Index = () => {
         setFinancialData(payload.data);
         setBackendMetrics({ ...EMPTY_BACKEND_METRICS, ...(payload.metrics || {}) });
         setDashboardTab("overview");
-        fetchedRef.current = true;
+        setOnboardingMode(null);
       } else {
-        // No saved data — show the welcome chooser
-        setOnboardingMode("welcome");
+        // Preserve chat/form if set; otherwise show welcome chooser.
+        setOnboardingMode((prev) =>
+          prev === "chat" || prev === "form" ? prev : "welcome"
+        );
       }
     } catch (err) {
       console.warn("Fetch error or no records:", err);
-      setOnboardingMode("welcome");
+      setOnboardingMode((prev) =>
+        prev === "chat" || prev === "form" ? prev : "welcome"
+      );
     } finally {
       setFetchingData(false);
     }
-  }, [user, isEditing, hasHydratedLocalState]);
+  }, [user?.id, isEditing, hasHydratedLocalState, onboardingMode]);
 
   useEffect(() => {
     fetchData();
-  }, [user, fetchData]);
+  }, [fetchData]);
 
   useEffect(() => {
     if (!user?.id || !hasHydratedLocalState) return;
@@ -199,7 +212,9 @@ const Index = () => {
       setOnboardingMode(null);
       setChatDraftData(null);
       setDashboardTab("overview");
-      toast.success("Coordinates updated securely, Pilot!");
+      toast.success(
+        `Coordinates updated securely${user?.user_metadata?.full_name?.split(" ")[0] ? `, ${user.user_metadata.full_name.split(" ")[0]}` : ""}!`
+      );
     } catch (error: unknown) {
       toast.error("Telemetry failure: " + (error instanceof Error ? error.message : "Unknown error"));
     }
@@ -244,7 +259,7 @@ const Index = () => {
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
         <p className="font-bold text-muted-foreground animate-pulse text-sm">
-          Authenticating Pilot...
+          Signing you in...
         </p>
       </div>
     );
@@ -291,7 +306,7 @@ const Index = () => {
         <div className="flex gap-2">
           <button
             onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-            className="nb-button-outline p-2 mr-2"
+            className="nb-button-outline p-2"
             title="Toggle Theme"
           >
             {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
@@ -306,7 +321,7 @@ const Index = () => {
                   setChatDraftData(null);
                 }
               }}
-              className="nb-button-outline px-4 py-2 text-sm font-bold flex items-center gap-2"
+              className="nb-button-outline px-2 py-1 text-sm font-bold flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" /> {isEditing ? "Cancel" : "Back"}
             </button>
@@ -337,9 +352,9 @@ const Index = () => {
         {/* ── Welcome chooser ─────────────────────────────────────────── */}
         {!isEditing && onboardingMode === "welcome" && (
           <div className="w-full max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-400">
-            <div className="mt-[100px] mb-[50px] text-center">
+            <div className="mt-[30px] md:mt-[100px] mb-[50px] text-center">
               <h2 className="text-3xl font-black text-foreground mb-2">
-                Welcome, {user.user_metadata.full_name?.split(" ")[0] || "Pilot"}! 👋
+                Welcome, {user.user_metadata.full_name?.split(" ")[0] || "there"}! 👋
               </h2>
               <p className="text-muted-foreground font-medium">
                 How would you like to set up your financial profile?
@@ -429,7 +444,7 @@ const Index = () => {
             <div className="mb-8 p-6 bg-accent/10 border-2 border-dashed border-foreground/20 rounded-xl relative overflow-hidden">
               <div className="relative z-10">
                 <h2 className="text-2xl font-black text-foreground mb-1">
-                  {isEditing ? "Modify the numbers" : chatDraftData ? "Review your data" : `Welcome, ${user.user_metadata.full_name || 'Pilot'}!`}
+                  {isEditing ? "Modify the numbers" : chatDraftData ? "Review your data" : `Welcome, ${user.user_metadata.full_name?.split(" ")[0] || "there"}!`}
                 </h2>
                 <p className="text-muted-foreground font-medium">
                   {isEditing

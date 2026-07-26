@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { toWordsINR } from "@/lib/inr-words";
 
 interface Props {
   onDone: (data: FinancialData) => void;
@@ -128,43 +129,6 @@ function shortLabel(n: number): string {
   if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
   if (n >= 1000) return `₹${(n / 1000).toFixed(0)}k`;
   return `₹${n}`;
-}
-
-// ─── Number-to-words (Indian system) ─────────────────────────────────────────
-
-const _ones = [
-  "", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-  "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
-  "seventeen", "eighteen", "nineteen",
-];
-const _tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
-
-function _twoDigit(n: number): string {
-  if (n < 20) return _ones[n];
-  return _tens[Math.floor(n / 10)] + (n % 10 ? " " + _ones[n % 10] : "");
-}
-
-function _threeDigit(n: number): string {
-  if (n < 100) return _twoDigit(n);
-  return _ones[Math.floor(n / 100)] + " hundred" + (n % 100 ? " " + _twoDigit(n % 100) : "");
-}
-
-function toWordsINR(n: number): string {
-  if (!n || n <= 0) return "";
-  let rem = n;
-  const parts: string[] = [];
-  const crore = Math.floor(rem / 10_000_000);
-  rem %= 10_000_000;
-  const lakh = Math.floor(rem / 100_000);
-  rem %= 100_000;
-  const thousand = Math.floor(rem / 1_000);
-  rem %= 1_000;
-  if (crore) parts.push(_twoDigit(crore) + " crore");
-  if (lakh) parts.push(_twoDigit(lakh) + " lakh");
-  if (thousand) parts.push(_twoDigit(thousand) + " thousand");
-  if (rem) parts.push(_threeDigit(rem));
-  const words = parts.join(" ");
-  return words.charAt(0).toUpperCase() + words.slice(1) + " rupees";
 }
 
 // ─── Small reusable pieces ────────────────────────────────────────────────────
@@ -901,14 +865,16 @@ function ProgressBar({ step }: { step: Step }) {
   );
 }
 
-/** Compact teaser in the chat input slot; opens a modal for tall forms. Outside click closes without sending. */
+/** Answer-style CTA in the chat reply slot; opens a modal for tall forms. */
 function ExpandableStep({
   title,
   summary,
+  ctaLabel = "Tap to answer",
   children,
 }: {
   title: string;
   summary: string;
+  ctaLabel?: string;
   children: (close: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -916,27 +882,37 @@ function ExpandableStep({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="w-full text-left flex items-center justify-between gap-3 group"
-      >
-        <div className="min-w-0">
-          <p className="text-sm font-black text-foreground">{title}</p>
-          <p className="text-xs font-medium text-muted-foreground truncate mt-0.5">{summary}</p>
-        </div>
-        <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-primary group-hover:translate-x-0.5 transition-transform">
-          <Maximize2 className="w-3.5 h-3.5" />
-          Open
-        </span>
-      </button>
+      <div className="animate-in slide-in-from-bottom-4 fade-in duration-300">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="w-full text-left rounded-2xl rounded-tr-md border-2 border-foreground bg-primary/15 hover:bg-primary/25 transition-colors p-4 flex items-center justify-between gap-3 group"
+          style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}
+        >
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest  text-sm text-primary md:text-base  mb-1.5 pl-[2.5rem] md:pl-[12.5rem] text-center">
+              Click to answer
+            </p>
+            <p className="text-sm font-black text-foreground">{title}</p>
+            <p className="text-xs font-medium text-muted-foreground mt-1 leading-snug">
+              {summary}
+            </p>
+            <p className="text-xs font-bold text-primary mt-2 inline-flex items-center gap-1 group-hover:gap-1.5 transition-all">
+              {ctaLabel} <ChevronRight className="w-3.5 h-3.5" />
+            </p>
+          </div>
+          <span className="shrink-0 w-10 h-10 rounded-xl bg-primary text-primary-foreground border-2 border-foreground flex items-center justify-center">
+            <Maximize2 className="w-4 h-4" />
+          </span>
+        </button>
+      </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto border-2 border-foreground rounded-xl bg-card p-5 sm:p-6 shadow-[6px_6px_0px_0px_hsl(var(--foreground))]">
           <DialogHeader className="text-left pr-6">
             <DialogTitle className="font-black text-lg tracking-tight">{title}</DialogTitle>
             <DialogDescription className="text-xs font-medium">
-              Edit below, then confirm. Click outside to close without sending.
+              Fill this in to continue. Click outside to close without sending.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-1">{children(close)}</div>
@@ -989,8 +965,19 @@ export function FinancialChatOnboarding({ onDone }: Props) {
     setTimeout(updateScrollCues, 200);
   };
 
-  const scrollToBottom = () => {
-    setTimeout(() => scrollChatTo("bottom"), 80);
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    const jump = () => {
+      const el = chatScrollRef.current;
+      if (!el) return;
+      el.scrollTo({ top: el.scrollHeight, behavior });
+      bottomRef.current?.scrollIntoView({ block: "end", behavior });
+      updateScrollCues();
+    };
+    // Defer so layout (history + input slot) is measured
+    requestAnimationFrame(() => {
+      jump();
+      setTimeout(jump, behavior === "auto" ? 50 : 80);
+    });
   };
 
   useEffect(() => {
@@ -1014,7 +1001,7 @@ export function FinancialChatOnboarding({ onDone }: Props) {
 
   const pushHistory = (entries: ChatEntry[]) => {
     setHistory((prev) => [...prev, ...entries]);
-    scrollToBottom();
+    scrollToBottom("smooth");
   };
 
   const BOT_QUESTIONS: Record<Step, string> = {
@@ -1039,6 +1026,16 @@ export function FinancialChatOnboarding({ onDone }: Props) {
     if (!savedDraft) {
       pushHistory([{ role: "bot", text: BOT_QUESTIONS.income }]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // On resume, land on the latest question (draft history restores at scrollTop 0)
+  useEffect(() => {
+    if (!savedDraft || history.length === 0) return;
+    scrollToBottom("auto");
+    // Retry after resume banner / input CTA paint
+    const t = setTimeout(() => scrollToBottom("auto"), 200);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1213,7 +1210,8 @@ export function FinancialChatOnboarding({ onDone }: Props) {
         return (
           <ExpandableStep
             title="Expense breakdown"
-            summary={`${shortLabel(expenseTotal)}/mo across ${Object.keys(EXPENSE_LABELS).length} categories`}
+            summary={`${shortLabel(expenseTotal)}/mo across ${Object.keys(EXPENSE_LABELS).length} categories — open and confirm to answer`}
+            ctaLabel="Open breakdown to answer"
           >
             {(close) => (
               <StepExpenseBreakdown
@@ -1238,7 +1236,8 @@ export function FinancialChatOnboarding({ onDone }: Props) {
         return (
           <ExpandableStep
             title="Investments"
-            summary="Mutual funds, stocks, gold, real estate & more"
+            summary="Mutual funds, stocks, gold, real estate & more — select what you have"
+            ctaLabel="Open investments to answer"
           >
             {(close) => (
               <StepInvestments
@@ -1254,7 +1253,8 @@ export function FinancialChatOnboarding({ onDone }: Props) {
         return (
           <ExpandableStep
             title="Loans & debt"
-            summary="Home loan, personal loan, credit cards & other"
+            summary="Home loan, personal loan, credit cards & other — add what applies"
+            ctaLabel="Open loans to answer"
           >
             {(close) => (
               <StepDebts
@@ -1285,7 +1285,7 @@ export function FinancialChatOnboarding({ onDone }: Props) {
       {showResumeBanner && (
         <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-3 rounded-lg border-2 border-accent/50 bg-accent/10 animate-in slide-in-from-top-2 fade-in">
           <p className="text-xs font-bold text-accent">
-            ✨ Resuming where you left off
+            Resuming where you left off
           </p>
           <button
             type="button"
@@ -1353,13 +1353,23 @@ export function FinancialChatOnboarding({ onDone }: Props) {
         )}
       </div>
 
-      {/* Current input area */}
-      <div
-        className="shrink-0 nb-card"
-        style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}
-      >
-        {renderInput()}
-      </div>
+      {/* Current input / answer area — expandable steps already look like a reply */}
+      {(() => {
+        const isFormAnswer =
+          step === "expenseBreakdown" || step === "investments" || step === "debts";
+        return (
+          <div
+            className={isFormAnswer ? "shrink-0" : "shrink-0 nb-card"}
+            style={
+              isFormAnswer
+                ? undefined
+                : { boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }
+            }
+          >
+            {renderInput()}
+          </div>
+        );
+      })()}
     </div>
   );
 }
