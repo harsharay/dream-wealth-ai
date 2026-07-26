@@ -24,35 +24,58 @@ const AuthContext = createContext<AuthContextType>({
     redeemBetaCode: () => false,
 });
 
+/** Pro unlock: profiles.tier === 'paid' (source of truth), plus legacy metadata / beta localStorage. */
+async function resolvePaidFromProfile(userId: string, metadata?: User["user_metadata"]): Promise<boolean> {
+    try {
+        const { data, error } = await supabase
+            .from("profiles")
+            .select("tier")
+            .eq("id", userId)
+            .maybeSingle();
+        if (!error && data?.tier) {
+            const tier = String(data.tier).toLowerCase();
+            if (tier === "paid" || tier === "pro") return true;
+            if (tier === "free") return !!metadata?.is_paid;
+        }
+    } catch {
+        // Fall through to metadata if profiles read fails
+    }
+    return !!metadata?.is_paid;
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
     const [loading, setLoading] = useState(true);
     const [isActualPaidUser, setIsActualPaidUser] = useState(false);
     
-    // Beta unlock state
+    // Beta unlock state (localStorage backup)
     const [betaExpiry, setBetaExpiry] = useState<number | null>(() => {
         const saved = localStorage.getItem('beta_unlock_expires_at');
         return saved ? parseInt(saved, 10) : null;
     });
     const [upgradeConfirmOpen, setUpgradeConfirmOpen] = useState(false);
 
+    const syncPaidStatus = async (nextSession: Session | null) => {
+        const nextUser = nextSession?.user ?? null;
+        setSession(nextSession);
+        setUser(nextUser);
+        setLoading(false);
+        if (!nextUser) {
+            setIsActualPaidUser(false);
+            return;
+        }
+        const paid = await resolvePaidFromProfile(nextUser.id, nextUser.user_metadata);
+        setIsActualPaidUser(paid);
+    };
+
     useEffect(() => {
-        // Check active sessions
         supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            setLoading(false);
-            const profile = session?.user?.user_metadata;
-            if (profile?.is_paid) setIsActualPaidUser(true);
+            void syncPaidStatus(session);
         });
 
-        // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            setLoading(false);
-            if (session?.user?.user_metadata?.is_paid) setIsActualPaidUser(true);
+            void syncPaidStatus(session);
         });
 
         return () => subscription.unsubscribe();
@@ -72,12 +95,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const confirmUpgradeToPro = () => {
         setUpgradeConfirmOpen(false);
         toast.promise(
-            new Promise((resolve) => setTimeout(resolve, 2000)),
+            (async () => {
+                // Mock payment: persist tier so Pro survives refresh.
+                if (user?.id) {
+                    const { error } = await supabase
+                        .from("profiles")
+                        .update({ tier: "paid" })
+                        .eq("id", user.id);
+                    if (error) throw error;
+                }
+                setIsActualPaidUser(true);
+                await new Promise((resolve) => setTimeout(resolve, 400));
+            })(),
             {
                 loading: 'Processing payment...',
                 success: () => {
-                    setIsActualPaidUser(true);
-                    // In a real app, update the 'profiles' table in Supabase
                     const firstName = user?.user_metadata?.full_name?.split(" ")[0];
                     return firstName
                         ? `Welcome to the inner circle, ${firstName}! Pro features unlocked.`
