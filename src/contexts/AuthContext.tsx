@@ -78,7 +78,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 success: () => {
                     setIsActualPaidUser(true);
                     // In a real app, update the 'profiles' table in Supabase
-                    return 'Welcome to the inner circle, Pilot! Pro features unlocked.';
+                    const firstName = user?.user_metadata?.full_name?.split(" ")[0];
+                    return firstName
+                        ? `Welcome to the inner circle, ${firstName}! Pro features unlocked.`
+                        : 'Welcome to the inner circle! Pro features unlocked.';
                 },
                 error: 'Payment failed. Please try again.',
             }
