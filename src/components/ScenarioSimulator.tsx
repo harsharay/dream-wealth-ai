@@ -670,7 +670,7 @@ export function ScenarioSimulator({
                  </div>
                  <h3 className="text-2xl font-black uppercase mb-4 leading-tight">Cooldown Active</h3>
                  <p className="text-muted-foreground font-bold mb-8 leading-relaxed">
-                   The Wealth Pilot requires time to recalculate paths. New suggestions will be unlocked in <span className="text-foreground">{eligibilityData.remainingDays} days</span> on {new Date(eligibilityData.nextAvailableAt!).toLocaleDateString()}.
+                   New suggestions need a short cooldown. They unlock in <span className="text-foreground">{eligibilityData.remainingDays} days</span> on {new Date(eligibilityData.nextAvailableAt!).toLocaleDateString()}.
                  </p>
                  <button 
                   onClick={() => setEligibilityPopupOpen(false)}
@@ -781,7 +781,7 @@ export function ScenarioSimulator({
         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center relative z-10 bg-gradient-to-b from-card to-accent/10">
           <Ghost className="w-20 h-20 text-accent mb-6 animate-bounce" />
           <h3 className="text-3xl font-black mb-1">New Campaign</h3>
-          <p className="text-muted-foreground font-bold mb-8 max-w-sm">Answer the Pilot's questions to unlock high-impact financial missions.</p>
+          <p className="text-muted-foreground font-bold mb-8 max-w-sm">Answer a few questions to unlock high-impact financial missions.</p>
           <button onClick={() => openFocusPicker(false)} className="nb-button text-xl px-12 py-4 flex items-center gap-3 hover:scale-105 transition-transform">
              <PlayCircle className="w-6 h-6" /> Start Quest
           </button>
@@ -832,7 +832,7 @@ export function ScenarioSimulator({
                       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
                       body: JSON.stringify({ question: questions[currentQIndex]?.q, rating: -1 })
                     });
-                    toast.success("Feedback received. Improving the Pilot... 🛠️");
+                    toast.success("Thanks — your feedback helps improve missions.");
                   }}
                   className="p-1 hover:bg-danger/20 rounded transition-colors" title="Rate Down"
                  >
@@ -870,7 +870,7 @@ export function ScenarioSimulator({
                       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
                       body: JSON.stringify({ question: questions[currentQIndex]?.q, rating: -1 })
                     });
-                    toast.success("Feedback received. Improving the Pilot... 🛠️");
+                    toast.success("Thanks — your feedback helps improve missions.");
                   }}
                   className="p-1 hover:bg-danger/20 rounded transition-colors" title="Rate Down"
                  >

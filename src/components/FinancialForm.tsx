@@ -2,6 +2,7 @@ import { useState, type ChangeEvent } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type { AgeRange, FinancialData, RiskAppetite } from "@/types/finance";
 import { distributeExpenses } from "@/lib/onboarding-defaults";
+import { toWordsINR } from "@/lib/inr-words";
 
 interface FinancialFormProps {
   data: FinancialData;
@@ -47,12 +48,15 @@ function Field({
   value,
   onChange,
   suffix,
+  showWords = true,
 }: {
   label: string;
   value: number;
   onChange: (raw: string) => void;
   suffix?: string;
+  showWords?: boolean;
 }) {
+  const words = showWords ? toWordsINR(value) : "";
   return (
     <div>
       <label className={labelClass}>
@@ -70,6 +74,11 @@ function Field({
         }}
         placeholder="₹ 0"
       />
+      {words && (
+        <p className="text-xs text-muted-foreground font-medium italic mt-1.5 animate-in fade-in duration-200">
+          {words}
+        </p>
+      )}
     </div>
   );
 }
