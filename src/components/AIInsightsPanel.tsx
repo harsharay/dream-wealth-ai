@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import type { FinancialMetrics, FinancialData } from "@/types/finance";
-import { Sparkles, Loader2, WifiOff, History, ChevronLeft, ChevronRight } from "lucide-react";
+import { Sparkles, Loader2, WifiOff, ChevronLeft, ChevronRight } from "lucide-react";
 import { fetchAIInsights, type InsightSection } from "@/lib/llm-service";
 import { generateFallbackInsights } from "@/lib/financial-engine";
+import { splitInsightItems, renderBoldMarkdown } from "@/lib/insight-copy";
+import { MobileAIInsightsPanel } from "@/components/mweb/MobileAIInsightsPanel";
+import { useMinWidth } from "@/hooks/use-min-width";
 import { format } from "date-fns";
 
 const isDev = import.meta.env.VITE_ENV === 'dev';
@@ -22,6 +25,7 @@ interface HistoryEntry {
 }
 
 export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
+  const isDesktop = useMinWidth(1024);
   const { user } = useAuth();
   const [sections, setSections] = useState<InsightSection[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -89,8 +93,27 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
 
   const displayedSections = historyIndex === 0 ? sections : history[historyIndex - 1]?.insight_data.sections;
   const displayedWarnings = historyIndex === 0 ? warnings : history[historyIndex - 1]?.insight_data.warnings;
+  const historyLabel =
+    historyIndex === 0
+      ? "Latest"
+      : format(new Date(history[historyIndex - 1].created_at), "MMM d");
 
   const colors = ["bg-accent/20", "bg-secondary/20", "bg-primary/20", "bg-success/20"];
+
+  if (!isDesktop) {
+    return (
+      <MobileAIInsightsPanel
+        status={status}
+        sections={displayedSections}
+        warnings={displayedWarnings}
+        historyCount={history.length}
+        historyIndex={historyIndex}
+        historyLabel={historyLabel}
+        onOlder={() => setHistoryIndex((v) => v + 1)}
+        onNewer={() => setHistoryIndex((v) => v - 1)}
+      />
+    );
+  }
 
   return (
     <div className="nb-card">
@@ -184,14 +207,10 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
                 <span>{section.emoji}</span> {section.title}
               </h4>
               <ul className="space-y-2">
-                {section.items.map((item, j) => (
+                {splitInsightItems(section.items).map((item, j) => (
                   <li key={j} className="text-sm text-foreground flex gap-2 font-medium">
                     <span className="shrink-0">{section.bullet}</span>
-                    <span>
-                      {item.split(/(\*\*.*?\*\*)/g).map((part, k) => (
-                        part.startsWith('**') ? <strong key={k}>{part.slice(2, -2)}</strong> : part
-                      ))}
-                    </span>
+                    <span>{renderBoldMarkdown(item)}</span>
                   </li>
                 ))}
               </ul>
@@ -206,11 +225,11 @@ export function AIInsightsPanel({ metrics, data }: AIInsightsPanelProps) {
                     <span className="animate-pulse text-lg">⚠️</span> Critical Alerts
                   </h4>
                   <ul className="space-y-3">
-                    {displayedWarnings.map((warning, idx) => (
+                    {splitInsightItems(displayedWarnings).map((warning, idx) => (
                       <li key={idx} className="flex items-start gap-3 group">
                         <div className="w-1.5 h-1.5 rounded-full bg-danger mt-1.5 shrink-0 group-hover:scale-125 transition-transform" />
                         <p className="text-sm font-bold text-foreground leading-relaxed">
-                          {warning}
+                          {renderBoldMarkdown(warning)}
                         </p>
                       </li>
                     ))}

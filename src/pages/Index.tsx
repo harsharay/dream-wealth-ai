@@ -17,6 +17,7 @@ import { PremiumUpsell } from "@/components/PremiumUpsell";
 import {
   LayoutDashboard,
   Sparkles,
+  Brush,
   FlaskConical,
   Compass,
   ArrowLeft,
@@ -25,18 +26,19 @@ import {
   PlusCircle,
   PencilLine,
   ChevronUp,
-  ChevronDown,
+  CircleUser,
   Moon,
   Sun,
   MessageSquare,
-  TableProperties,
+  Pencil,
 } from "lucide-react";
+import { MobileProCard } from "@/components/mweb/MobileProCard";
 
 type DashboardTab = "overview" | "insights" | "simulator";
 
 const DASHBOARD_TABS: { id: DashboardTab; label: string; icon: React.ElementType; premium?: boolean }[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
-  { id: "insights", label: "AI Insights", icon: Sparkles },
+  { id: "insights", label: "AI Insights", icon: Brush },
   { id: "simulator", label: "Simulator", icon: FlaskConical, premium: true },
 ];
 
@@ -395,6 +397,7 @@ const Index = () => {
                   <span>Get Honesty Check</span>
                   <span className="font-black text-base group-hover:translate-x-1 transition-transform duration-300 ease-out">→</span>
                 </div>
+                {/* <Sparkles className="absolute right-1 top-5 w-24 h-24 text-accent/20 rotate-12" /> */}
               </button>
 
               {/* Manual / Advanced */}
@@ -409,7 +412,7 @@ const Index = () => {
                       className="w-12 h-12 rounded-xl bg-muted border-2 border-foreground text-foreground flex items-center justify-center group-hover:bg-foreground group-hover:text-background transition-colors duration-300 ease-out"
                       style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}
                     >
-                      <TableProperties className="w-6 h-6" />
+                      <Pencil className="w-6 h-6" />
                     </div>
                   </div>
 
@@ -426,6 +429,8 @@ const Index = () => {
                   <span>Open Ledger Form</span>
                   <span className="font-black text-base group-hover:translate-x-1 transition-transform duration-300 ease-out">→</span>
                 </div>
+
+                {/* <Pencil className="absolute right-1 top-5 w-24 h-24 text-accent/20 rotate-12" /> */}
               </button>
             </div>
           </div>
@@ -450,14 +455,14 @@ const Index = () => {
                   {isEditing
                     ? "Update your numbers for a fresh diagnostic report."
                     : chatDraftData
-                    ? "Your answers have been pre-filled. Expand any section to fine-tune, then hit go."
+                    ? "Everything from chat is pre-filled. Expand any section to edit, then continue."
                     : "Enter your financial data to receive your first AI prognosis."
                   }
                 </p>
               </div>
               {isEditing
                 ? <PencilLine className="absolute -right-4 -bottom-4 w-24 h-24 text-accent/20 rotate-12" />
-                : <Sparkles className="absolute -right-4 -bottom-4 w-24 h-24 text-accent/20 rotate-12" />
+                : <Pencil className="absolute -right-0 -bottom-0 w-24 h-24 text-accent/20 rotate-12" />
               }
             </div>
             <FinancialForm
@@ -495,12 +500,11 @@ const Index = () => {
       
       <div className="relative z-10">
         {/* Header */}
-        <header className="glass-header p-4 md:px-8">
-        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <header className="glass-header p-4 md:px-8 border-b border-neutral-200/80 dark:border-white/10 lg:border-b-4 lg:border-foreground">
+        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center justify-between gap-4 lg:gap-6">
           <div className="flex items-center justify-between w-full lg:w-auto">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary border-2 border-foreground flex items-center justify-center relative"
-                style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}>
+              <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-lg bg-primary flex items-center justify-center relative lg:border-2 lg:border-foreground lg:shadow-[2px_2px_0_0_hsl(var(--foreground))]">
                 <Compass className="w-5 h-5 text-primary-foreground" />
                 {fetchingData && (
                   <div className="absolute -top-1 -right-1 bg-background border border-foreground rounded-full p-0.5">
@@ -509,11 +513,11 @@ const Index = () => {
                 )}
               </div>
               <div>
-                <h1 className="font-sans text-2xl font-bold text-foreground leading-tight">WealthPilot</h1>
+                <h1 className="font-sans text-lg lg:text-2xl font-bold text-foreground leading-tight">WealthPilot</h1>
                 {!isPaidUser && (
                   <button 
                     onClick={() => setIsUpgradeModalOpen(true)} 
-                    className="text-[10px] font-black uppercase text-primary hover:underline flex items-center gap-1"
+                    className="hidden lg:flex text-[10px] font-black uppercase text-primary hover:underline items-center gap-1"
                   >
                     Upgrade to Pro <ChevronUp className="w-2 h-2" />
                   </button>
@@ -521,30 +525,34 @@ const Index = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 lg:hidden">
+            <div className="flex items-center gap-1.5 lg:hidden">
               <button
                 onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-                className="nb-button-outline p-2"
+                className="h-10 w-10 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted/80"
                 title="Toggle Theme"
               >
                 {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
               </button>
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="nb-button-outline p-2 transition-transform duration-200"
-                style={{ transform: isMobileMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-foreground"
+                aria-label="Account menu"
+                aria-expanded={isMobileMenuOpen}
               >
-                <ChevronDown className="w-6 h-6" />
+                <CircleUser className="w-5 h-5" />
               </button>
             </div>
           </div>
 
           {/* Mobile Actions Menu */}
           {isMobileMenuOpen && (
-            <div className="lg:hidden flex flex-col gap-2 p-2 bg-muted/30 rounded-xl border-2 border-foreground animate-in slide-in-from-top-2">
+            <div className="lg:hidden flex flex-col gap-1 p-2 bg-card rounded-2xl border border-neutral-200/80 dark:border-white/10 animate-in slide-in-from-top-2">
               <button
-                onClick={handleNewReport}
-                className="flex items-center gap-3 px-4 py-3 font-bold text-sm nb-button-outline bg-secondary/10 w-full"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  handleNewReport();
+                }}
+                className="flex items-center gap-3 px-4 py-3 font-semibold text-sm rounded-xl hover:bg-muted/70 w-full"
               >
                 <PlusCircle className="w-5 h-5" /> New Report
               </button>
@@ -553,35 +561,55 @@ const Index = () => {
                   handleEdit();
                   setIsMobileMenuOpen(false);
                 }}
-                className="flex items-center gap-3 px-4 py-3 font-bold text-sm nb-button-outline w-full"
+                className="flex items-center gap-3 px-4 py-3 font-semibold text-sm rounded-xl hover:bg-muted/70 w-full"
               >
                 <PencilLine className="w-5 h-5" /> Edit Data
               </button>
               <button
                 onClick={() => signOut()}
-                className="flex items-center gap-3 px-4 py-3 font-bold text-sm nb-button-outline text-danger border-danger/30 w-full"
+                className="flex items-center gap-3 px-4 py-3 font-semibold text-sm rounded-xl hover:bg-danger/5 text-danger w-full"
               >
                 <LogOut className="w-5 h-5" /> Log Out
               </button>
             </div>
           )}
 
-          <nav className="grid grid-cols-3 lg:flex w-full lg:w-auto bg-muted p-1 rounded-xl border-2 border-foreground no-scrollbar gap-1">
+          <nav className="lg:hidden flex w-full gap-1 p-1 rounded-full bg-muted/70">
+            {DASHBOARD_TABS.map((tab) => {
+              const isActive = dashboardTab === tab.id;
+              return (
+                <button
+                  key={`mweb-${tab.id}`}
+                  onClick={() => setDashboardTab(tab.id)}
+                  className={`flex-1 min-h-10 flex items-center justify-center gap-1.5 px-2 py-2 rounded-full text-[11px] font-bold transition-colors whitespace-nowrap ${
+                    isActive
+                      ? "bg-[#EDE9FE] text-[#6D28D9]"
+                      : "text-neutral-500"
+                  }`}
+                >
+                  <tab.icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          <nav className="hidden lg:flex w-auto bg-muted p-1 rounded-xl border-2 border-foreground no-scrollbar gap-1">
             {DASHBOARD_TABS.map((tab) => {
               const isActive = dashboardTab === tab.id;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setDashboardTab(tab.id)}
-                  className={`flex items-center justify-center lg:justify-start gap-1.5 px-1.5 lg:px-5 py-2 rounded-lg font-bold transition-all whitespace-nowrap shrink-0 ${isActive
+                  className={`flex items-center justify-start gap-1.5 px-5 py-2 rounded-lg font-bold transition-all whitespace-nowrap shrink-0 ${isActive
                     ? "bg-foreground text-background"
                     : "text-muted-foreground hover:text-foreground"
                     }`}
                 >
-                  <tab.icon className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
-                  <span className="text-[10px] sm:text-xs lg:text-sm">{tab.label}</span>
+                  <tab.icon className="w-4 h-4" />
+                  <span className="text-sm">{tab.label}</span>
                   {tab.premium && (
-                    <span className={`text-[8px] lg:text-[9px] px-1 lg:px-1.5 py-0.5 rounded border ${isPaidUser ? "bg-success/20 text-success border-success/30" : "bg-accent/20 border-foreground/30"} ${isActive ? "text-[white]" : "text-[black]"}`}>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${isPaidUser ? "bg-success/20 text-success border-success/30" : "bg-accent/20 border-foreground/30"} ${isActive ? "text-[white]" : "text-[black]"}`}>
                       PRO
                     </span>
                   )}
@@ -628,6 +656,7 @@ const Index = () => {
             onOpenInsights={() => setDashboardTab("insights")}
             onOpenSimulator={() => setDashboardTab("simulator")}
             onUpgrade={() => setIsUpgradeModalOpen(true)}
+            onRefineScore={handleEdit}
           />
         )}
 
@@ -659,8 +688,9 @@ const Index = () => {
         )}
 
         {!isPaidUser && (
-          <div className="mt-12">
-            <PremiumUpsell />
+          <div className={`mt-12 ${dashboardTab === "overview" ? "hidden lg:block" : ""}`}>
+            {/* <PremiumUpsell /> */}
+            <MobileProCard onUpgrade={() => setIsUpgradeModalOpen(true)} />
           </div>
         )}
       </main>

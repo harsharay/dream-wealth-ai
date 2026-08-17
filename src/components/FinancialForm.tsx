@@ -1,7 +1,6 @@
 import { useState, type ChangeEvent } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
-import type { AgeRange, FinancialData, RiskAppetite } from "@/types/finance";
-import { distributeExpenses } from "@/lib/onboarding-defaults";
+import { ChevronDown, ChevronUp, Plus, X } from "lucide-react";
+import type { AgeRange, CustomMoneyItem, FinancialData, RiskAppetite } from "@/types/finance";
 import { toWordsINR } from "@/lib/inr-words";
 
 interface FinancialFormProps {
@@ -26,9 +25,16 @@ function titleCase(key: string): string {
   return key.replace(/([A-Z])/g, " $1").trim();
 }
 
+function sumCustom(items: CustomMoneyItem[] | undefined): number {
+  return (items ?? []).reduce((s, i) => s + (i.amount || 0), 0);
+}
+
 // ─── Single field ─────────────────────────────────────────────────────────────
 
-const labelClass = "text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block";
+const labelClass =
+  "text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 min-h-[2.5rem] leading-tight flex items-end";
+const simpleLabelClass =
+  "text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block";
 const inputClass = "nb-input w-full text-sm";
 const AGE_RANGE_OPTIONS: { value: AgeRange; label: string }[] = [
   { value: "under_20", label: "< 20" },
@@ -43,26 +49,29 @@ const AGE_RANGE_OPTIONS: { value: AgeRange; label: string }[] = [
   { value: "above_60", label: "> 60" },
 ];
 
+const ASSET_LABELS: Record<string, string> = {
+  bankBalance: "Liquid cash / bank",
+  gold: "Gold",
+  mutualFunds: "Mutual Funds",
+  stocks: "Stocks",
+  realEstate: "Real Estate",
+};
+
 function Field({
   label,
   value,
   onChange,
-  suffix,
   showWords = true,
 }: {
   label: string;
   value: number;
   onChange: (raw: string) => void;
-  suffix?: string;
   showWords?: boolean;
 }) {
   const words = showWords ? toWordsINR(value) : "";
   return (
     <div>
-      <label className={labelClass}>
-        {label}
-        {suffix && <span className="ml-1 normal-case font-medium">{suffix}</span>}
-      </label>
+      <label className={labelClass}>{label}</label>
       <input
         type="text"
         inputMode="numeric"
@@ -79,6 +88,117 @@ function Field({
           {words}
         </p>
       )}
+    </div>
+  );
+}
+
+// ─── Custom add-more row ──────────────────────────────────────────────────────
+
+interface CustomRowProps {
+  item: CustomMoneyItem;
+  labelPlaceholder: string;
+  onLabelChange: (label: string) => void;
+  onAmountChange: (amount: number) => void;
+  onRemove: () => void;
+}
+
+function CustomItemRow({
+  item,
+  labelPlaceholder,
+  onLabelChange,
+  onAmountChange,
+  onRemove,
+}: CustomRowProps) {
+  const [raw, setRaw] = useState(item.amount ? formatValue(item.amount) : "");
+  const words = toWordsINR(item.amount);
+
+  return (
+    <div className="space-y-1 animate-in slide-in-from-top-2 fade-in duration-200 min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
+        <input
+          type="text"
+          className="nb-input flex-1 min-w-0 py-2 text-sm"
+          placeholder={labelPlaceholder}
+          value={item.label}
+          onChange={(e) => onLabelChange(e.target.value)}
+        />
+        <input
+          type="text"
+          inputMode="numeric"
+          className="nb-input w-[5.5rem] sm:w-28 shrink-0 py-2 text-sm"
+          placeholder="₹ Amount"
+          value={raw}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            const stripped = e.target.value.replace(/,/g, "");
+            if (stripped === "" || /^\d+$/.test(stripped)) {
+              setRaw(e.target.value);
+              onAmountChange(parseRaw(stripped));
+            }
+          }}
+        />
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Remove"
+          className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors border-0 shadow-none"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      {words && (
+        <p className="text-xs text-muted-foreground font-medium italic pl-1">{words}</p>
+      )}
+    </div>
+  );
+}
+
+type CustomListKey = "customExpenses" | "customAssets" | "customLiabilities";
+
+function CustomExtrasBlock({
+  title,
+  items,
+  labelPlaceholder,
+  addLabel,
+  onChange,
+}: {
+  title: string;
+  items: CustomMoneyItem[];
+  labelPlaceholder: string;
+  addLabel: string;
+  onChange: (next: CustomMoneyItem[]) => void;
+}) {
+  return (
+    <div className="mt-4 pt-4 border-t border-foreground/10 space-y-3">
+      {items.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</p>
+          {items.map((item, idx) => (
+            <CustomItemRow
+              key={idx}
+              item={item}
+              labelPlaceholder={labelPlaceholder}
+              onLabelChange={(label) => {
+                const next = [...items];
+                next[idx] = { ...next[idx], label };
+                onChange(next);
+              }}
+              onAmountChange={(amount) => {
+                const next = [...items];
+                next[idx] = { ...next[idx], amount };
+                onChange(next);
+              }}
+              onRemove={() => onChange(items.filter((_, i) => i !== idx))}
+            />
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => onChange([...items, { label: "", amount: 0 }])}
+        className="flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Plus className="w-3.5 h-3.5" /> {addLabel}
+      </button>
     </div>
   );
 }
@@ -172,31 +292,28 @@ export function FinancialForm({ data, onSave, startCollapsed = false }: Financia
     setForm((prev) => ({ ...prev, liabilities: { ...prev.liabilities, [field]: num } }));
   };
 
-  // When the user types a total in collapsed mode, distribute across sub-fields.
-  const handleExpenseTotalChange = (raw: string) => {
-    const total = parseRaw(raw);
-    const allZero = Object.values(form.expenses).every((v) => v === 0);
-    if (allZero) {
-      setForm((prev) => ({ ...prev, expenses: distributeExpenses(total, "metro") }));
-    } else {
-      // Only update "other" as residual
-      const sumExcluding = Object.entries(form.expenses)
-        .filter(([k]) => k !== "other")
-        .reduce((s, [, v]) => s + v, 0);
-      setForm((prev) => ({
-        ...prev,
-        expenses: { ...prev.expenses, other: Math.max(0, total - sumExcluding) },
-      }));
-    }
+  const setCustomList = (key: CustomListKey, next: CustomMoneyItem[]) => {
+    setForm((prev) => ({ ...prev, [key]: next }));
   };
 
-  const totalExpenses = Object.values(form.expenses).reduce((s, v) => s + v, 0);
-  const totalAssets = Object.values(form.assets).reduce((s, v) => s + v, 0);
-  const totalLiabilities = Object.values(form.liabilities).reduce((s, v) => s + v, 0);
+  const totalExpenses =
+    Object.values(form.expenses).reduce((s, v) => s + v, 0) + sumCustom(form.customExpenses);
+  const totalAssets =
+    Object.values(form.assets).reduce((s, v) => s + v, 0) + sumCustom(form.customAssets);
+  const totalLiabilities =
+    Object.values(form.liabilities).reduce((s, v) => s + v, 0) + sumCustom(form.customLiabilities);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(form);
+    // Drop empty extra rows before save
+    const prune = (items: CustomMoneyItem[] | undefined) =>
+      (items ?? []).filter((i) => i.amount > 0 || i.label.trim());
+    onSave({
+      ...form,
+      customExpenses: prune(form.customExpenses),
+      customAssets: prune(form.customAssets),
+      customLiabilities: prune(form.customLiabilities),
+    });
   };
 
   const isFormEmpty =
@@ -208,10 +325,10 @@ export function FinancialForm({ data, onSave, startCollapsed = false }: Financia
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Income — always open, single field */}
-      <div className="nb-card">
-        <h3 className="font-sans font-bold text-foreground mb-4 text-lg">💰 Monthly Income</h3>
+      <div className="nb-card space-y-4">
+        <h3 className="font-sans font-bold text-foreground text-lg">Monthly Income</h3>
         <Field
-          label="Total Monthly Income (per month)"
+          label="Total Monthly Income"
           value={form.monthlyIncome}
           onChange={(raw) => updateField("root", "monthlyIncome", raw)}
         />
@@ -224,17 +341,24 @@ export function FinancialForm({ data, onSave, startCollapsed = false }: Financia
         total={totalExpenses}
         startOpen={!startCollapsed}
       >
+        <p className="text-xs text-muted-foreground font-medium mb-3">All amounts are monthly.</p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {Object.entries(form.expenses).map(([key, val]) => (
             <Field
               key={key}
               label={titleCase(key)}
-              suffix="(per month)"
               value={val}
               onChange={(raw) => updateField("expenses", key, raw)}
             />
           ))}
         </div>
+        <CustomExtrasBlock
+          title="Extra expenses"
+          items={form.customExpenses ?? []}
+          labelPlaceholder="Label (e.g. misc, gym…)"
+          addLabel="Add another expense (optional)"
+          onChange={(next) => setCustomList("customExpenses", next)}
+        />
       </CollapsibleMoneySection>
 
       {/* Assets */}
@@ -248,12 +372,34 @@ export function FinancialForm({ data, onSave, startCollapsed = false }: Financia
           {Object.entries(form.assets).map(([key, val]) => (
             <Field
               key={key}
-              label={titleCase(key)}
+              label={ASSET_LABELS[key] ?? titleCase(key)}
               value={val}
               onChange={(raw) => updateField("assets", key, raw)}
             />
           ))}
         </div>
+        <div className="mt-4 space-y-2">
+          <Field
+            label="Monthly Investments (SIP / NPS / other)"
+            value={form.monthlyInvestments ?? 0}
+            onChange={(raw) =>
+              setForm((prev) => ({
+                ...prev,
+                monthlyInvestments: raw === "" ? 0 : parseRaw(raw),
+              }))
+            }
+          />
+          <p className="text-xs text-muted-foreground">
+            Combined monthly amount you invest — improves the investing pillar of your health score.
+          </p>
+        </div>
+        <CustomExtrasBlock
+          title="Other investments"
+          items={form.customAssets ?? []}
+          labelPlaceholder="Label (e.g. PPF, FD…)"
+          addLabel="Add more (PPF, FD, NPS corpus…)"
+          onChange={(next) => setCustomList("customAssets", next)}
+        />
       </CollapsibleMoneySection>
 
       {/* Liabilities */}
@@ -263,17 +409,26 @@ export function FinancialForm({ data, onSave, startCollapsed = false }: Financia
         total={totalLiabilities}
         startOpen={!startCollapsed}
       >
+        <p className="text-xs text-muted-foreground font-medium mb-3">
+          Outstanding balances, not EMI.
+        </p>
         <div className="grid grid-cols-2 gap-4">
           {Object.entries(form.liabilities).map(([key, val]) => (
             <Field
               key={key}
               label={titleCase(key)}
-              suffix={key !== "creditCardDebt" ? "(outstanding)" : ""}
               value={val}
               onChange={(raw) => updateField("liabilities", key, raw)}
             />
           ))}
         </div>
+        <CustomExtrasBlock
+          title="Other loans"
+          items={form.customLiabilities ?? []}
+          labelPlaceholder="Label (e.g. vehicle loan…)"
+          addLabel="Add more (vehicle loan, education loan…)"
+          onChange={(next) => setCustomList("customLiabilities", next)}
+        />
       </CollapsibleMoneySection>
 
       {/* Risk Appetite */}
@@ -308,7 +463,7 @@ export function FinancialForm({ data, onSave, startCollapsed = false }: Financia
         <h3 className="font-sans font-bold text-foreground text-lg">🏁 Retirement Planning (Optional)</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Age Range</label>
+            <label className={simpleLabelClass}>Age Range</label>
             <select
               className={inputClass}
               value={form.ageRange ?? ""}

@@ -25,7 +25,12 @@ export function MoneyFlowSankey({ data }: MoneyFlowSankeyProps) {
       data.expenses.healthcare +
       data.expenses.education
   );
-  const discretionary = Math.max(0, data.expenses.entertainment + data.expenses.other);
+  const discretionary = Math.max(
+    0,
+    data.expenses.entertainment +
+      data.expenses.other +
+      (data.customExpenses ?? []).reduce((s, i) => s + (i.amount || 0), 0)
+  );
   const savings = Math.max(0, data.monthlyIncome - (fixed + essential + discretionary));
 
   const inflow = Math.max(data.monthlyIncome, fixed + essential + discretionary + savings);

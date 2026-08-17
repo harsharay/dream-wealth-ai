@@ -1,4 +1,7 @@
-import { formatCurrency, getScoreLabel } from "@/lib/financial-engine";
+import {
+  formatCurrency,
+  getScoreLabel,
+} from "@/lib/financial-engine";
 import type { BackendFinancialMetrics, FinancialData, FinancialMetrics } from "@/types/finance";
 
 export type CheckupStatus = "strong" | "watch" | "risk";
@@ -27,6 +30,7 @@ export interface MoneyStory {
   healthLabel: string;
   healthScore: number;
   checkup: CheckupItem[];
+  focusId: string;
 }
 
 export const STATUS_RANK: Record<CheckupStatus, number> = { risk: 0, watch: 1, strong: 2 };
@@ -170,20 +174,21 @@ export function buildMoneyStory(
   const netWorthLabel = formatCurrency(metrics.netWorth);
 
   let headline: string;
+
   if (worst?.id === "emergency" && worst.status !== "strong") {
-    headline = `You earn ${incomeLabel}/mo, but liquid cash covers only ~${buffer.toFixed(1)} months — thin buffer for your lifestyle.`;
+    headline = `You earn ${incomeLabel}/mo, but your buffer covers only ${buffer.toFixed(1)} months.`;
   } else if (worst?.id === "debt" && worst.status === "risk") {
     headline = hasCreditCard
-      ? `Net worth is ${netWorthLabel}, yet expensive credit card debt is still eating your edge.`
-      : `Income looks fine, but EMI stress at ${(emi * 100).toFixed(0)}% is crowding out wealth building.`;
+      ? `Net worth is ${netWorthLabel}, but credit card debt is dragging you down.`
+      : `EMI stress is ${((emi) * 100).toFixed(0)}% — limiting your wealth building.`;
   } else if (worst?.id === "spending" && worst.status === "risk") {
-    headline = `You're earning ${incomeLabel}/mo but keeping only ${metrics.savingsRate.toFixed(0)}% — lifestyle is outrunning wealth.`;
+    headline = `You save only ${metrics.savingsRate.toFixed(0)}% of your ${incomeLabel}/mo income.`;
   } else if (worst?.id === "investing" && worst.status === "risk") {
-    headline = `Markets are in the mix, but without a cash cushion you're gambling with your safety net.`;
+    headline = `Your investments lack a safety cushion.`;
   } else if (worst?.status === "strong") {
-    headline = `Health looks solid at ${metrics.healthScore}. Keep protecting the buffer and directing surplus to goals.`;
+    headline = `Your finances look solid. Keep building toward your goals.`;
   } else {
-    headline = `Net worth ${netWorthLabel} with a ${getScoreLabel(metrics.healthScore).toLowerCase()} health score — focus next on ${worst?.title.toLowerCase() ?? "the gaps below"}.`;
+    headline = `${netWorthLabel} net worth, ${getScoreLabel(metrics.healthScore).toLowerCase()} health — focus on ${worst.title.toLowerCase()}.`;
   }
 
   return {
@@ -191,5 +196,6 @@ export function buildMoneyStory(
     healthLabel: getScoreLabel(metrics.healthScore),
     healthScore: metrics.healthScore,
     checkup,
+    focusId: worst?.id ?? checkup[0]?.id ?? "",
   };
 }
