@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { BackendFinancialMetrics, FinancialData, FinancialMetrics } from "@/types/finance";
 import { buildMoneyStory } from "@/lib/money-story";
-import { formatCurrency } from "@/lib/financial-engine";
+import { formatCurrency, SCORE_PILLAR_LABELS } from "@/lib/financial-engine";
 import { MoneyStoryHero } from "@/components/MoneyStoryHero";
 import { FinanceCheckupList } from "@/components/FinanceCheckupList";
 import { HealthScoreGauge } from "@/components/HealthScoreGauge";
@@ -11,13 +11,13 @@ import { EmiStressGauge } from "@/components/EmiStressGauge";
 import { MoneyFlowSankey } from "@/components/MoneyFlowSankey";
 import { AssetChart } from "@/components/AssetChart";
 import { LiabilityChart } from "@/components/LiabilityChart";
+import { MobileMoneyStoryOverview } from "@/components/mweb/MobileMoneyStoryOverview";
+import { useMinWidth } from "@/hooks/use-min-width";
 import {
   ChevronDown,
   Gamepad2,
   Sparkles,
-  Wallet,
-  Percent,
-  Activity,
+  PencilLine,
 } from "lucide-react";
 
 interface MoneyStoryOverviewProps {
@@ -28,6 +28,7 @@ interface MoneyStoryOverviewProps {
   onOpenInsights: () => void;
   onOpenSimulator: () => void;
   onUpgrade: () => void;
+  onRefineScore?: () => void;
 }
 
 export function MoneyStoryOverview({
@@ -38,28 +39,52 @@ export function MoneyStoryOverview({
   onOpenInsights,
   onOpenSimulator,
   onUpgrade,
+  onRefineScore,
 }: MoneyStoryOverviewProps) {
+  const isDesktop = useMinWidth(1024);
   const story = buildMoneyStory(data, metrics, backendMetrics);
   const [numbersOpen, setNumbersOpen] = useState(false);
   const emiPct = (Number.isFinite(backendMetrics.emiStressRatio) ? backendMetrics.emiStressRatio : 0) * 100;
+
+  const showRefine =
+    Boolean(onRefineScore) &&
+    ((data.monthlyInvestments ?? 0) <= 0 || metrics.scoreBreakdownMeta.investingEstimated);
 
   const proof = [
     {
       label: "Net worth",
       value: formatCurrency(metrics.netWorth),
-      icon: Wallet,
+      icon: "wallet" as const,
+      tone: "purple" as const,
     },
     {
       label: "Savings rate",
       value: `${metrics.savingsRate.toFixed(1)}%`,
-      icon: Percent,
+      icon: "percent" as const,
+      tone: "green" as const,
     },
     {
       label: "EMI stress",
       value: `${emiPct.toFixed(1)}%`,
-      icon: Activity,
+      icon: "activity" as const,
+      tone: "orange" as const,
     },
   ];
+
+  if (!isDesktop) {
+    return (
+      <MobileMoneyStoryOverview
+        data={data}
+        metrics={metrics}
+        backendMetrics={backendMetrics}
+        isPaidUser={isPaidUser}
+        onOpenInsights={onOpenInsights}
+        onOpenSimulator={onOpenSimulator}
+        onUpgrade={onUpgrade}
+        onRefineScore={onRefineScore}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -67,27 +92,33 @@ export function MoneyStoryOverview({
         healthScore={story.healthScore}
         healthLabel={story.healthLabel}
         headline={story.headline}
+        metrics={proof}
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {proof.map((item) => (
-          <div
-            key={item.label}
-            className="rounded-lg border-2 border-foreground bg-card px-4 py-3 flex items-center gap-3 nb-shadow-sm"
-            style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}
-          >
-            <div className="w-9 h-9 rounded-md border-2 border-foreground bg-muted flex items-center justify-center shrink-0">
-              <item.icon className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                {item.label}
-              </p>
-              <p className="font-mono text-lg font-black text-foreground truncate">{item.value}</p>
-            </div>
+      {showRefine && (
+        <div
+          className="rounded-lg border-2 border-foreground bg-card px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between"
+          style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}
+        >
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+              Refine your score
+            </p>
+            <p className="text-sm font-medium text-foreground mt-0.5">
+              Add your monthly SIP / NPS — {SCORE_PILLAR_LABELS.investing.toLowerCase()} is estimated
+              until you do.
+            </p>
           </div>
-        ))}
-      </div>
+          <button
+            type="button"
+            onClick={onRefineScore}
+            className="nb-button-outline shrink-0 flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold"
+          >
+            <PencilLine className="w-4 h-4" />
+            Add details
+          </button>
+        </div>
+      )}
 
       <FinanceCheckupList items={story.checkup} />
 
@@ -152,7 +183,11 @@ export function MoneyStoryOverview({
           <div className="relative px-4 md:px-6 pb-6 pt-2 border-t-2 border-foreground/10 space-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
               <div className="lg:col-span-6">
-                <HealthScoreGauge score={metrics.healthScore} />
+                <HealthScoreGauge
+                  score={metrics.healthScore}
+                  breakdown={metrics.scoreBreakdown}
+                  breakdownMeta={metrics.scoreBreakdownMeta}
+                />
               </div>
               <div className="lg:col-span-6">
                 <EmergencyBufferGauge emergencyBufferMonths={backendMetrics.emergencyBufferMonths} />
@@ -180,10 +215,13 @@ export function MoneyStoryOverview({
               </div>
 
               <div className="lg:col-span-6 h-full">
-                <AssetChart assets={data.assets} />
+                <AssetChart assets={data.assets} customAssets={data.customAssets} />
               </div>
               <div className="lg:col-span-6 h-full">
-                <LiabilityChart liabilities={data.liabilities} />
+                <LiabilityChart
+                  liabilities={data.liabilities}
+                  customLiabilities={data.customLiabilities}
+                />
               </div>
             </div>
           </div>

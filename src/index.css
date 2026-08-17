@@ -188,7 +188,49 @@
   }
 
   .glass-header {
-    @apply bg-background/80 backdrop-blur-sm sticky top-0 z-50 border-b-4 border-foreground;
+    @apply bg-background/80 backdrop-blur-sm sticky top-0 z-50;
+  }
+
+  /* Neutralize neobrutalist chart chrome when embedded in the mweb deck. */
+  .mweb-chart-embed {
+    overflow: hidden;
+  }
+
+  .mweb-chart-embed .nb-card {
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 4px 0 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    justify-content: flex-start;
+    gap: 0.65rem;
+  }
+
+  .mweb-chart-embed .nb-card > h3 {
+    display: none;
+  }
+
+  .mweb-chart-embed .score-ring {
+    filter: none;
+  }
+
+  .mweb-chart-embed .score-ring svg {
+    width: 128px;
+    height: 128px;
+  }
+
+  .mweb-chart-embed .score-ring .font-mono {
+    font-size: 1.75rem;
+    line-height: 1;
+  }
+
+  /* Recharts needs a real height; flex-1 inside height:auto collapses to 0. */
+  .mweb-chart-embed .nb-card > .flex-1 {
+    flex: 0 0 auto;
+    height: 200px;
+    min-height: 200px !important;
   }
 
   .score-ring {

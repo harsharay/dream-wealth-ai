@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CheckupItem, CheckupStatus } from "@/lib/money-story";
+import { sortCheckupBySeverity, type CheckupItem, type CheckupStatus } from "@/lib/money-story";
 import { ChevronDown, ShieldAlert, ShieldCheck, Shield } from "lucide-react";
 
 interface FinanceCheckupListProps {
@@ -28,7 +28,9 @@ const statusMeta: Record<
 };
 
 export function FinanceCheckupList({ items }: FinanceCheckupListProps) {
-  const [openId, setOpenId] = useState<string | null>(items.find((i) => i.status === "risk")?.id ?? items[0]?.id ?? null);
+  const [openId, setOpenId] = useState<string | null>(
+    sortCheckupBySeverity(items)[0]?.id ?? items[0]?.id ?? null
+  );
 
   return (
     <section className="nb-card p-0 overflow-hidden">

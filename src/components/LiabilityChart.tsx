@@ -1,9 +1,10 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts";
 import { formatCurrency } from "@/lib/financial-engine";
-import type { Liabilities } from "@/types/finance";
+import type { CustomMoneyItem, Liabilities } from "@/types/finance";
 
 interface LiabilityChartProps {
   liabilities: Liabilities;
+  customLiabilities?: CustomMoneyItem[];
 }
 
 const LABELS: Record<keyof Liabilities, string> = {
@@ -17,14 +18,28 @@ const COLORS = [
   "hsl(var(--primary))",
   "hsl(var(--secondary))",
   "hsl(var(--destructive))",
-  "hsl(var(--accent))"
+  "hsl(var(--accent))",
+  "hsl(200, 70%, 45%)",
 ];
 
-export function LiabilityChart({ liabilities }: LiabilityChartProps) {
-  const data = (Object.entries(liabilities) as [keyof Liabilities, number][])
-    .map(([key, value], i) => ({ name: LABELS[key], value, color: COLORS[i] }));
+export function LiabilityChart({
+  liabilities,
+  customLiabilities = [],
+}: LiabilityChartProps) {
+  const data = (Object.entries(liabilities) as [keyof Liabilities, number][]).map(
+    ([key, value], i) => ({ name: LABELS[key], value, color: COLORS[i % COLORS.length] })
+  );
 
-  const hasData = data.some(d => d.value > 0);
+  const otherNamed = customLiabilities.reduce((s, i) => s + (i.amount || 0), 0);
+  if (otherNamed > 0) {
+    data.push({
+      name: "Other loans",
+      value: otherNamed,
+      color: COLORS[data.length % COLORS.length],
+    });
+  }
+
+  const hasData = data.some((d) => d.value > 0);
 
   if (!hasData) {
     return (
@@ -90,15 +105,14 @@ export function LiabilityChart({ liabilities }: LiabilityChartProps) {
             strokeWidth={2}
             minPointSize={4}
           >
-            <Cell key={0} fill={COLORS[0]} />
-            <Cell key={1} fill={COLORS[1]} />
-            <Cell key={2} fill={COLORS[2]} />
-            <Cell key={3} fill={COLORS[3]} />
-            <LabelList 
-              dataKey="value" 
-              position="right" 
+            {data.map((d, i) => (
+              <Cell key={d.name} fill={d.color ?? COLORS[i % COLORS.length]} />
+            ))}
+            <LabelList
+              dataKey="value"
+              position="right"
               offset={10}
-              formatter={(v: number) => v > 0 ? `₹${(v / 1000).toFixed(0)}k` : ""}
+              formatter={(v: number) => (v > 0 ? `₹${(v / 1000).toFixed(0)}k` : "")}
               style={{ fill: "hsl(var(--foreground))", fontSize: 10, fontWeight: "900" }}
             />
           </Bar>

@@ -25,6 +25,15 @@ export interface ExpenseCategories {
   other: number;
 }
 
+/** Named extra money lines (expenses, assets, or liabilities beyond fixed categories). */
+export interface CustomMoneyItem {
+  label: string;
+  amount: number;
+}
+
+/** @deprecated Prefer CustomMoneyItem — alias kept for existing expense call sites. */
+export type CustomExpenseItem = CustomMoneyItem;
+
 export type RiskAppetite = "low" | "medium" | "high";
 export type AgeRange =
   | "under_20"
@@ -46,6 +55,34 @@ export interface FinancialData {
   riskAppetite: RiskAppetite;
   ageRange?: AgeRange;
   targetRetirementCorpus?: number;
+  /** Monthly SIP / NPS / other recurring investments (optional; improves investing pillar) */
+  monthlyInvestments?: number;
+  /** Optional named expense rows beyond the fixed categories */
+  customExpenses?: CustomMoneyItem[];
+  /** Optional named asset rows (e.g. PPF, FD) — counted with liquid for emergency buffer */
+  customAssets?: CustomMoneyItem[];
+  /** Optional named liability rows beyond the fixed categories */
+  customLiabilities?: CustomMoneyItem[];
+}
+
+export interface ScoreBreakdown {
+  emergency: number;
+  savings: number;
+  debt: number;
+  investing: number;
+  diversification: number;
+}
+
+export interface ScoreBreakdownMeta {
+  /** True when investing pillar used provisional growth-asset proxy instead of monthlyInvestments */
+  investingEstimated: boolean;
+  maxPoints: {
+    emergency: number;
+    savings: number;
+    debt: number;
+    investing: number;
+    diversification: number;
+  };
 }
 
 export interface FinancialMetrics {
@@ -58,6 +95,8 @@ export interface FinancialMetrics {
   healthScore: number;
   liquidityRatio: number;
   assetDiversificationScore: number;
+  scoreBreakdown: ScoreBreakdown;
+  scoreBreakdownMeta: ScoreBreakdownMeta;
   warnings: string[];
 }
 

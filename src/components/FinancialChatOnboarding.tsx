@@ -1,15 +1,26 @@
 import { useState, useEffect, useRef, useCallback, type ChangeEvent, type ReactNode } from "react";
-import { Compass, ChevronRight, ChevronUp, ChevronDown, Check, ArrowLeft, Plus, X, Maximize2 } from "lucide-react";
+import {
+  Compass,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  Check,
+  ArrowLeft,
+  Plus,
+  X,
+  Maximize2,
+  Pencil,
+} from "lucide-react";
 import type { AgeRange, FinancialData, RiskAppetite } from "@/types/finance";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   type CityTier,
   type HousingSituation,
   distributeExpenses,
-  DEFAULT_EXPENSE_RATIO,
-  INCOME_RANGES,
+  estimateMonthlyLivingExpenses,
 } from "@/lib/onboarding-defaults";
 import { emptyFinancialData } from "@/lib/financial-engine";
+import { Slider } from "@/components/ui/slider";
 import {
   Dialog,
   DialogContent,
@@ -36,9 +47,14 @@ type Step =
   | "ageRange"
   | "done";
 
+/** Steps the user can jump back to via Edit on a past answer. */
+type AnswerableStep = Exclude<Step, "done">;
+
 interface ChatEntry {
   role: "bot" | "user";
   text: string;
+  /** On user messages: which question this answer belongs to (enables Edit). */
+  answeredStep?: AnswerableStep;
 }
 
 // ─── localStorage draft ───────────────────────────────────────────────────────
@@ -51,6 +67,8 @@ interface OnboardingDraft {
   cityTier: CityTier;
   housingSituation: HousingSituation;
   form: FinancialData;
+  /** Liquid cash from savings step (before custom investments are stored as customAssets). */
+  liquidCash?: number;
 }
 
 function loadDraft(): OnboardingDraft | null {
@@ -88,8 +106,21 @@ const EXPENSE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
+function housingExpenseLabel(situation: HousingSituation): string {
+  switch (situation) {
+    case "rent":
+      return "Housing / Rent";
+    case "emi":
+      return "Housing / Maintenance";
+    case "own":
+      return "Housing / Maintenance";
+    case "family":
+      return "Housing / Contribution";
+  }
+}
+
 const INVESTMENT_OPTIONS = [
-  { id: "mutualFunds", label: "Mutual Funds / SIP" },
+  { id: "mutualFunds", label: "Mutual Funds" },
   { id: "stocks", label: "Stocks" },
   { id: "gold", label: "Gold" },
   { id: "realEstate", label: "Real Estate" },
@@ -101,17 +132,17 @@ const LIABILITY_OPTIONS = [
   { id: "creditCardDebt", label: "Credit Card Debt" },
 ];
 
-const AGE_RANGE_OPTIONS: { value: AgeRange; label: string; emoji: string }[] = [
-  { value: "under_20", label: "< 20", emoji: "🌱" },
-  { value: "20_25", label: "20 - 25", emoji: "🚀" },
-  { value: "26_30", label: "26 - 30", emoji: "📈" },
-  { value: "31_35", label: "31 - 35", emoji: "⚖️" },
-  { value: "36_40", label: "36 - 40", emoji: "🧭" },
-  { value: "41_45", label: "41 - 45", emoji: "🏔️" },
-  { value: "46_50", label: "46 - 50", emoji: "🎯" },
-  { value: "51_55", label: "51 - 55", emoji: "🌅" },
-  { value: "56_60", label: "56 - 60", emoji: "🛡️" },
-  { value: "above_60", label: "> 60", emoji: "🌟" },
+const AGE_RANGE_OPTIONS: { value: AgeRange; label: string }[] = [
+  { value: "under_20", label: "< 20" },
+  { value: "20_25", label: "20 - 25" },
+  { value: "26_30", label: "26 - 30" },
+  { value: "31_35", label: "31 - 35" },
+  { value: "36_40", label: "36 - 40" },
+  { value: "41_45", label: "41 - 45" },
+  { value: "46_50", label: "46 - 50" },
+  { value: "51_55", label: "51 - 55" },
+  { value: "56_60", label: "56 - 60" },
+  { value: "above_60", label: "> 60" },
 ];
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
@@ -146,9 +177,26 @@ function BotBubble({ text }: { text: string }) {
   );
 }
 
-function UserBubble({ text }: { text: string }) {
+function UserBubble({
+  text,
+  onEdit,
+}: {
+  text: string;
+  onEdit?: () => void;
+}) {
   return (
-    <div className="flex justify-end animate-in slide-in-from-right-4 fade-in duration-200">
+    <div className="flex justify-end items-end gap-1.5 animate-in slide-in-from-right-4 fade-in duration-200">
+      {onEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          title="Edit this answer"
+          aria-label="Edit this answer"
+          className="shrink-0 mb-0.5 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border-0"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+      )}
       <div className="py-2.5 px-4 max-w-[80%] text-sm font-medium leading-relaxed rounded-2xl rounded-tr-md bg-primary/15 text-foreground">
         {text}
       </div>
@@ -169,7 +217,7 @@ function Chip({
     <button
       type="button"
       onClick={onClick}
-      className={`px-4 py-2 rounded-lg border-2 border-foreground text-sm font-bold transition-all duration-150 ${
+      className={`max-w-full px-3 sm:px-4 py-2 rounded-lg border-2 border-foreground text-sm font-bold transition-all duration-150 ${
         selected
           ? "bg-primary text-primary-foreground"
           : "bg-card text-foreground "
@@ -240,35 +288,72 @@ function NumberInput({
 
 // ─── Step: Income ─────────────────────────────────────────────────────────────
 
+const INCOME_SLIDER_MIN = 15_000;
+const INCOME_SLIDER_MAX = 1_000_000;
+const INCOME_SLIDER_STEP = 5_000;
+const INCOME_SLIDER_DEFAULT = 75_000;
+const INCOME_TYPE_MAX = 5_000_000;
+
 function StepIncome({ onSelect }: { onSelect: (val: number, label: string) => void }) {
-  const [custom, setCustom] = useState(0);
-  const [useCustom, setUseCustom] = useState(false);
+  const [val, setVal] = useState(INCOME_SLIDER_DEFAULT);
+
+  const setFromSlider = (n: number) => {
+    setVal(clampIncome(n, INCOME_SLIDER_MAX));
+  };
+
+  const setFromInput = (n: number) => {
+    setVal(clampIncome(n, INCOME_TYPE_MAX));
+  };
+
+  const sliderValue = Math.min(val, INCOME_SLIDER_MAX);
 
   return (
-    <div className="space-y-3 animate-in slide-in-from-bottom-4 fade-in duration-300">
-      <div className="flex flex-wrap gap-2">
-        {INCOME_RANGES.map((r) => (
-          <Chip key={r.label} label={r.label} onClick={() => onSelect(r.midpoint, r.label)} />
-        ))}
-        <Chip label="Enter exact" selected={useCustom} onClick={() => setUseCustom(true)} />
+    <div className="space-y-4 animate-in slide-in-from-bottom-4 fade-in duration-300">
+      <div className="space-y-1">
+        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          Monthly take-home
+        </p>
+        <p className="text-2xl font-black text-foreground tabular-nums">₹{formatINR(val)}</p>
+        <p className="text-xs text-muted-foreground font-medium italic">{toWordsINR(val)}</p>
       </div>
-      {useCustom && (
-        <div className="flex gap-2 items-end animate-in slide-in-from-top-2 fade-in">
-          <div className="flex-1">
-            <NumberInput value={custom} onChange={setCustom} placeholder="₹ Enter take-home" />
-          </div>
-          <button
-            type="button"
-            disabled={custom === 0}
-            onClick={() => onSelect(custom, shortLabel(custom))}
-            className="nb-button-primary px-5 py-3 disabled:opacity-40"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
+
+      <div className="px-1 space-y-2">
+        <Slider
+          min={INCOME_SLIDER_MIN}
+          max={INCOME_SLIDER_MAX}
+          step={INCOME_SLIDER_STEP}
+          value={[sliderValue]}
+          onValueChange={([n]) => setFromSlider(n)}
+          aria-label="Monthly take-home income"
+        />
+        <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+          <span>₹{formatINR(INCOME_SLIDER_MIN)}</span>
+          <span>Drag or type exact below</span>
+          <span>₹{formatINR(INCOME_SLIDER_MAX)}+</span>
         </div>
-      )}
+      </div>
+
+      <NumberInput
+        value={val}
+        onChange={setFromInput}
+        placeholder="₹ Or type exact take-home"
+      />
+
+      <button
+        type="button"
+        disabled={val <= 0}
+        onClick={() => onSelect(val, shortLabel(val) + "/mo take-home")}
+        className="nb-button-primary w-full py-3 disabled:opacity-40"
+      >
+        Next →
+      </button>
     </div>
   );
+}
+
+function clampIncome(n: number, max: number): number {
+  if (!Number.isFinite(n) || n <= 0) return INCOME_SLIDER_MIN;
+  return Math.min(max, Math.max(INCOME_SLIDER_MIN, Math.round(n)));
 }
 
 // ─── Step: City ───────────────────────────────────────────────────────────────
@@ -300,24 +385,24 @@ function StepCity({ onSelect }: { onSelect: (tier: CityTier, label: string) => v
 // ─── Step: Housing ────────────────────────────────────────────────────────────
 
 function StepHousing({ onSelect }: { onSelect: (sit: HousingSituation, label: string) => void }) {
-  const opts: { sit: HousingSituation; label: string; emoji: string }[] = [
-    { sit: "rent", label: "I pay rent", emoji: "🏠" },
-    { sit: "emi", label: "Own home with EMI", emoji: "🏦" },
-    { sit: "own", label: "Own home, no EMI", emoji: "✅" },
-    { sit: "family", label: "Live with family", emoji: "👨‍👩‍👧" },
+  const opts: { sit: HousingSituation; label: string; sub: string }[] = [
+    { sit: "rent", label: "I rent my home", sub: "Paying monthly rent" },
+    { sit: "emi", label: "Buying on a home loan", sub: "Paying EMI toward ownership" },
+    { sit: "own", label: "I own it outright", sub: "No rent, no home loan" },
+    { sit: "family", label: "Live with family", sub: "Little or no housing cost" },
   ];
   return (
-    <div className="grid grid-cols-2 gap-2 animate-in slide-in-from-bottom-4 fade-in duration-300">
+    <div className="flex flex-col gap-2 animate-in slide-in-from-bottom-4 fade-in duration-300">
       {opts.map((o) => (
         <button
           key={o.sit}
           type="button"
-          onClick={() => onSelect(o.sit, `${o.emoji} ${o.label}`)}
-          className="nb-card py-4 px-3 text-center hover:bg-muted transition-colors"
+          onClick={() => onSelect(o.sit, o.label)}
+          className="nb-card py-3 px-4 text-left hover:bg-muted transition-colors"
           style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}
         >
-          <div className="text-xl mb-1">{o.emoji}</div>
-          <div className="font-bold text-xs leading-tight">{o.label}</div>
+          <div className="font-bold text-sm">{o.label}</div>
+          <div className="text-muted-foreground text-xs mt-0.5">{o.sub}</div>
         </button>
       ))}
     </div>
@@ -328,25 +413,44 @@ function StepHousing({ onSelect }: { onSelect: (sit: HousingSituation, label: st
 
 function StepTotalExpenses({
   defaultValue,
+  housingSituation,
   onNext,
 }: {
   defaultValue: number;
+  housingSituation: HousingSituation;
   onNext: (val: number) => void;
 }) {
   const [val, setVal] = useState(defaultValue);
   useEffect(() => {
     setVal(defaultValue);
   }, [defaultValue]);
-    // odl key:AIzaSyC9JunyhHoWzQx1TcVi6u7vOCaQbrxnCsA
+
+  const excludesHomeEmi = housingSituation === "emi";
 
   return (
     <div className="space-y-3 animate-in slide-in-from-bottom-4 fade-in duration-300">
-      <p className="text-xs text-muted-foreground font-medium">
-        Pre-filled from your income & city. The estimate includes housing, food, transport, utilities,
-        insurance, entertainment, healthcare, education & other - not EMIs or investments.
-        Adjust freely; next step splits this total by category.
-      </p>
-      <NumberInput value={val} onChange={setVal} placeholder="₹ Monthly living expenses" />
+      <div className="space-y-1.5">
+        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          Estimated day-to-day living costs
+        </p>
+        <p className="text-xs text-muted-foreground font-medium leading-relaxed">
+          This is food, transport, utilities, insurance, and housing{" "}
+          {excludesHomeEmi ? "maintenance" : housingSituation === "rent" ? "(rent)" : "costs"} —
+          based on your income, city, and housing. It is{" "}
+          <span className="font-bold text-foreground">not</span> your full monthly outflow.
+        </p>
+        {excludesHomeEmi ? (
+          <p className="text-xs text-muted-foreground font-medium leading-relaxed border-l-2 border-primary/40 pl-2">
+            Home loan EMI is excluded here — you&apos;ll add outstanding loan balances in the loans
+            step next. Investments / SIPs are also separate.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground font-medium leading-relaxed border-l-2 border-primary/40 pl-2">
+            Loan EMIs and investments are not included — those come in later steps.
+          </p>
+        )}
+      </div>
+      <NumberInput value={val} onChange={setVal} placeholder="₹ Monthly living costs" />
       <button
         type="button"
         disabled={val === 0}
@@ -354,107 +458,6 @@ function StepTotalExpenses({
         className="nb-button-primary w-full py-3 disabled:opacity-40"
       >
         Confirm → Break it down
-      </button>
-    </div>
-  );
-}
-
-// ─── Step: Expense breakdown ──────────────────────────────────────────────────
-
-function StepExpenseBreakdown({
-  expenses: initialExpenses,
-  total,
-  onNext,
-  onEditTotal,
-}: {
-  expenses: Record<string, number>;
-  total: number;
-  onNext: (expenses: Record<string, number>) => void;
-  onEditTotal: () => void;
-}) {
-  const [expenses, setExpenses] = useState({ ...initialExpenses });
-
-  const handleChange = (key: string, val: number) => {
-    setExpenses((prev) => {
-      const next = { ...prev, [key]: val };
-      const sumExcludingOther = Object.entries(next)
-        .filter(([k]) => k !== "other")
-        .reduce((s, [, v]) => s + v, 0);
-      next.other = Math.max(0, total - sumExcludingOther);
-      return next;
-    });
-  };
-
-  const currentSum = Object.values(expenses).reduce((s, v) => s + v, 0);
-  const diff = currentSum - total;
-  const balanced = Math.abs(diff) < 2;
-
-  return (
-    <div className="space-y-3 animate-in slide-in-from-bottom-4 fade-in duration-300">
-      {/* Allocation summary + back link */}
-      <div className="flex justify-between items-center">
-        <button
-          type="button"
-          onClick={onEditTotal}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground font-bold transition-colors"
-        >
-          <ArrowLeft className="w-3 h-3" /> Edit total ({shortLabel(total)})
-        </button>
-        <span className={`text-xs font-bold ${balanced ? "text-accent" : "text-destructive"}`}>
-          {shortLabel(currentSum)} / {shortLabel(total)}
-          {!balanced && (diff > 0 ? ` (+${shortLabel(diff)})` : ` (${shortLabel(-diff)} left)`)}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
-        {Object.entries(expenses).map(([key, val]) => (
-          <div key={key} className="flex flex-col gap-1 min-w-0">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground truncate">
-              {EXPENSE_LABELS[key] ?? key}
-            </label>
-            {key === "other" ? (
-              <div className="nb-input py-2 text-sm text-muted-foreground bg-muted/40">
-                {shortLabel(val)} <span className="text-[10px]">(auto)</span>
-              </div>
-            ) : (
-              <NumberInput small value={val} onChange={(n) => handleChange(key, n)} />
-            )}
-          </div>
-        ))}
-      </div>
-
-      <button
-        type="button"
-        onClick={() => onNext(expenses)}
-        className="nb-button-primary w-full py-3"
-      >
-        {balanced ? "Looks good →" : "Continue anyway →"}
-      </button>
-    </div>
-  );
-}
-
-// ─── Step: Savings ────────────────────────────────────────────────────────────
-
-function StepSavings({ onNext }: { onNext: (val: number) => void }) {
-  const [val, setVal] = useState(0);
-  return (
-    <div className="space-y-3 animate-in slide-in-from-bottom-4 fade-in duration-300">
-      <NumberInput value={val} onChange={setVal} placeholder="₹ Bank balance / savings" />
-      <button
-        type="button"
-        disabled={val === 0}
-        onClick={() => onNext(val)}
-        className="nb-button-primary w-full py-3 disabled:opacity-40"
-      >
-        Next →
-      </button>
-      <button
-        type="button"
-        onClick={() => onNext(0)}
-        className="w-full text-xs text-muted-foreground underline"
-      >
-        Skip for now
       </button>
     </div>
   );
@@ -473,11 +476,13 @@ function CustomItemRow({
   onLabelChange,
   onAmountChange,
   onRemove,
+  labelPlaceholder = "Label",
 }: {
   item: CustomItem;
   onLabelChange: (label: string) => void;
   onAmountChange: (amount: number) => void;
   onRemove: () => void;
+  labelPlaceholder?: string;
 }) {
   const [raw, setRaw] = useState(item.amount ? formatINR(item.amount) : "");
 
@@ -492,19 +497,19 @@ function CustomItemRow({
   const words = toWordsINR(item.amount);
 
   return (
-    <div className="space-y-1 animate-in slide-in-from-top-2 fade-in duration-200">
-      <div className="flex items-center gap-2">
+    <div className="space-y-1 animate-in slide-in-from-top-2 fade-in duration-200 min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
         <input
           type="text"
-          className="nb-input flex-1 py-2 text-sm"
-          placeholder="Label (e.g. PPF, FD…)"
+          className="nb-input flex-1 min-w-0 py-2 text-sm"
+          placeholder={labelPlaceholder}
           value={item.label}
           onChange={(e) => onLabelChange(e.target.value)}
         />
         <input
           type="text"
           inputMode="numeric"
-          className="nb-input w-32 py-2 text-sm"
+          className="nb-input w-[5.5rem] sm:w-28 shrink-0 py-2 text-sm"
           placeholder="₹ Amount"
           value={raw}
           onChange={handleAmountChange}
@@ -512,9 +517,10 @@ function CustomItemRow({
         <button
           type="button"
           onClick={onRemove}
-          className="shrink-0 p-2 rounded-lg border-2 border-foreground/30 hover:border-foreground hover:bg-destructive/10 transition-colors"
+          aria-label="Remove"
+          className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors border-0 shadow-none"
         >
-          <X className="w-3.5 h-3.5" />
+          <X className="w-4 h-4" />
         </button>
       </div>
       {words && (
@@ -524,16 +530,160 @@ function CustomItemRow({
   );
 }
 
+// ─── Step: Expense breakdown ──────────────────────────────────────────────────
+
+function StepExpenseBreakdown({
+  expenses: initialExpenses,
+  initialCustom = [],
+  housingSituation,
+  onNext,
+  onEditTotal,
+}: {
+  expenses: Record<string, number>;
+  initialCustom?: CustomItem[];
+  housingSituation: HousingSituation;
+  onNext: (expenses: Record<string, number>, customItems: CustomItem[]) => void;
+  onEditTotal: () => void;
+}) {
+  const [expenses, setExpenses] = useState({ ...initialExpenses });
+  const [customItems, setCustomItems] = useState<CustomItem[]>(() =>
+    initialCustom.map((item) => ({
+      ...item,
+      id: item.id || `exp_${Math.random().toString(36).slice(2, 9)}`,
+    }))
+  );
+
+  const customTotal = customItems.reduce((s, i) => s + i.amount, 0);
+
+  const handleChange = (key: string, val: number) => {
+    setExpenses((prev) => ({ ...prev, [key]: val }));
+  };
+
+  const currentSum = Object.values(expenses).reduce((s, v) => s + v, 0) + customTotal;
+
+  const handleSubmit = () => {
+    // Keep `other` as the Other field only — custom rows persist separately
+    onNext({ ...expenses }, customItems.filter((i) => i.amount > 0 || i.label.trim()));
+  };
+
+  const labelFor = (key: string) =>
+    key === "housing" ? housingExpenseLabel(housingSituation) : (EXPENSE_LABELS[key] ?? key);
+
+  return (
+    <div className="space-y-3 animate-in slide-in-from-bottom-4 fade-in duration-300 min-w-0">
+      <div className="flex justify-between items-center gap-2 min-w-0">
+        <button
+          type="button"
+          onClick={onEditTotal}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground font-bold transition-colors shrink-0"
+        >
+          <ArrowLeft className="w-3 h-3" /> Back to estimate
+        </button>
+        <span className="text-xs font-bold text-muted-foreground truncate">
+          Total {shortLabel(currentSum)}
+          <span className="font-medium"> · edit freely</span>
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 min-w-0">
+        {Object.entries(expenses).map(([key, val]) => (
+          <div key={key} className="flex flex-col gap-1 min-w-0">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+              {labelFor(key)}
+            </label>
+            <NumberInput small value={val} onChange={(n) => handleChange(key, n)} />
+          </div>
+        ))}
+      </div>
+
+      {customItems.length > 0 && (
+        <div className="space-y-2 animate-in fade-in border-t border-foreground/10 pt-3 min-w-0">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+            Extra expenses
+          </p>
+          {customItems.map((item) => (
+            <CustomItemRow
+              key={item.id}
+              item={item}
+              labelPlaceholder="Label (e.g. misc, gym…)"
+              onLabelChange={(l) =>
+                setCustomItems((prev) =>
+                  prev.map((i) => (i.id === item.id ? { ...i, label: l } : i))
+                )
+              }
+              onAmountChange={(a) =>
+                setCustomItems((prev) =>
+                  prev.map((i) => (i.id === item.id ? { ...i, amount: a } : i))
+                )
+              }
+              onRemove={() => setCustomItems((prev) => prev.filter((i) => i.id !== item.id))}
+            />
+          ))}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() =>
+          setCustomItems((prev) => [
+            ...prev,
+            { id: `exp_${Date.now()}`, label: "", amount: 0 },
+          ])
+        }
+        className="flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Plus className="w-3.5 h-3.5" /> Add another expense (optional)
+      </button>
+
+      <button type="button" onClick={handleSubmit} className="nb-button-primary w-full py-3">
+        Looks good →
+      </button>
+    </div>
+  );
+}
+
+// ─── Step: Savings ────────────────────────────────────────────────────────────
+
+function StepSavings({ onNext }: { onNext: (val: number) => void }) {
+  const [val, setVal] = useState(0);
+  return (
+    <div className="space-y-3 animate-in slide-in-from-bottom-4 fade-in duration-300">
+      <NumberInput value={val} onChange={setVal} placeholder="₹ Liquid cash / savings" />
+      <button
+        type="button"
+        disabled={val === 0}
+        onClick={() => onNext(val)}
+        className="nb-button-primary w-full py-3 disabled:opacity-40"
+      >
+        Next →
+      </button>
+      <button
+        type="button"
+        onClick={() => onNext(0)}
+        className="w-full text-xs text-muted-foreground underline"
+      >
+        Skip this question
+      </button>
+    </div>
+  );
+}
+
 // ─── Step: Investments ────────────────────────────────────────────────────────
 
 function StepInvestments({
   onNext,
 }: {
-  onNext: (assets: Partial<Record<string, number>>, customTotal: number) => void;
+  onNext: (
+    assets: Partial<Record<string, number>>,
+    customItems: CustomItem[],
+    monthlyInvestments: number
+  ) => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [values, setValues] = useState<Record<string, number>>({});
   const [customItems, setCustomItems] = useState<CustomItem[]>([]);
+  const [showMonthly, setShowMonthly] = useState(false);
+  const [monthlyInvestments, setMonthlyInvestments] = useState(0);
 
   const toggle = (id: string) => {
     if (id === "none") {
@@ -570,13 +720,17 @@ function StepInvestments({
     for (const id of selected) {
       assets[id] = values[id] ?? 0;
     }
-    onNext(assets, customTotal);
+    onNext(
+      assets,
+      customItems.filter((i) => i.amount > 0 || i.label.trim()),
+      showMonthly ? monthlyInvestments : 0
+    );
   };
 
   const hasAny = selected.length > 0 || customItems.length > 0;
 
   return (
-    <div className="space-y-4 animate-in slide-in-from-bottom-4 fade-in duration-300">
+    <div className="space-y-4 animate-in slide-in-from-bottom-4 fade-in duration-300 min-w-0 overflow-x-hidden">
       <div className="flex flex-wrap gap-2">
         {INVESTMENT_OPTIONS.map((o) => (
           <Chip
@@ -586,13 +740,23 @@ function StepInvestments({
             onClick={() => toggle(o.id)}
           />
         ))}
-        <Chip label="None" selected={!hasAny} onClick={() => { toggle("none"); setCustomItems([]); }} />
+        <Chip
+          label="None"
+          selected={!hasAny}
+          onClick={() => {
+            toggle("none");
+            setCustomItems([]);
+          }}
+        />
       </div>
 
       {selected.length > 0 && (
         <div className="space-y-2 animate-in slide-in-from-top-2 fade-in">
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-            Current value
+            Current asset value (total you hold today)
+          </p>
+          <p className="text-[10px] text-muted-foreground font-medium -mt-1">
+            Not your monthly SIP — that&apos;s optional below
           </p>
           {INVESTMENT_OPTIONS.filter((o) => selected.includes(o.id)).map((o) => (
             <NumberInput
@@ -605,16 +769,16 @@ function StepInvestments({
         </div>
       )}
 
-      {/* Custom other investments */}
       {customItems.length > 0 && (
         <div className="space-y-2 animate-in fade-in">
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-            Other investments
+            Other assets
           </p>
           {customItems.map((item) => (
             <CustomItemRow
               key={item.id}
               item={item}
+              labelPlaceholder="Label (e.g. PPF, FD…)"
               onLabelChange={(l) => updateCustom(item.id, "label", l)}
               onAmountChange={(a) => updateCustom(item.id, "amount", a)}
               onRemove={() => removeCustom(item.id)}
@@ -622,7 +786,7 @@ function StepInvestments({
           ))}
           {customTotal > 0 && (
             <p className="text-[10px] text-muted-foreground font-medium">
-              Total other: {shortLabel(customTotal)} — will show as additional savings in review
+              Total other: {shortLabel(customTotal)} — counted with liquid savings
             </p>
           )}
         </div>
@@ -633,15 +797,37 @@ function StepInvestments({
         onClick={addCustomItem}
         className="flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
       >
-        <Plus className="w-3.5 h-3.5" /> Add more (PPF, FD, NPS, Bonds…)
+        <Plus className="w-3.5 h-3.5" /> Add more assets (PPF, FD, NPS…)
       </button>
 
-      <button
-        type="button"
-        onClick={handleSubmit}
-        className="nb-button-primary w-full py-3"
-      >
-        {!hasAny ? "No investments →" : "Confirm →"}
+      <div className="border-t border-foreground/10 pt-3 space-y-2">
+        {!showMonthly ? (
+          <button
+            type="button"
+            onClick={() => setShowMonthly(true)}
+            className="flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add monthly SIP / investments (optional)
+          </button>
+        ) : (
+          <div className="space-y-2 animate-in slide-in-from-top-2 fade-in">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              Monthly SIP / NPS / other (recurring)
+            </p>
+            <p className="text-[10px] text-muted-foreground font-medium">
+              How much you invest each month — separate from asset balances above
+            </p>
+            <NumberInput
+              value={monthlyInvestments}
+              onChange={setMonthlyInvestments}
+              placeholder="₹ Per month"
+            />
+          </div>
+        )}
+      </div>
+
+      <button type="button" onClick={handleSubmit} className="nb-button-primary w-full py-3">
+        {!hasAny && monthlyInvestments === 0 ? "No assets →" : "Confirm →"}
       </button>
     </div>
   );
@@ -652,7 +838,10 @@ function StepInvestments({
 function StepDebts({
   onNext,
 }: {
-  onNext: (liabilities: Partial<Record<string, number>>) => void;
+  onNext: (
+    liabilities: Partial<Record<string, number>>,
+    customItems: CustomItem[]
+  ) => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [values, setValues] = useState<Record<string, number>>({});
@@ -694,13 +883,14 @@ function StepDebts({
     for (const id of selected) {
       liabilities[id] = values[id] ?? 0;
     }
-    // Merge custom items into 'others'
-    liabilities.others = (liabilities.others ?? 0) + customOthersTotal;
-    onNext(liabilities);
+    onNext(
+      liabilities,
+      customItems.filter((i) => i.amount > 0 || i.label.trim())
+    );
   };
 
   return (
-    <div className="space-y-4 animate-in slide-in-from-bottom-4 fade-in duration-300">
+    <div className="space-y-4 animate-in slide-in-from-bottom-4 fade-in duration-300 min-w-0 overflow-x-hidden">
       <div className="flex flex-wrap gap-2">
         {LIABILITY_OPTIONS.map((o) => (
           <Chip
@@ -743,6 +933,7 @@ function StepDebts({
             <CustomItemRow
               key={item.id}
               item={item}
+              labelPlaceholder="Label (e.g. vehicle loan…)"
               onLabelChange={(l) => updateCustom(item.id, "label", l)}
               onAmountChange={(a) => updateCustom(item.id, "amount", a)}
               onRemove={() => removeCustom(item.id)}
@@ -750,7 +941,7 @@ function StepDebts({
           ))}
           {customOthersTotal > 0 && (
             <p className="text-[10px] text-muted-foreground font-medium">
-              Total: {shortLabel(customOthersTotal)} — added to "other loans"
+              Total: {shortLabel(customOthersTotal)} — saved as named other loans
             </p>
           )}
         </div>
@@ -778,10 +969,10 @@ function StepDebts({
 // ─── Step: Risk ───────────────────────────────────────────────────────────────
 
 function StepRisk({ onSelect }: { onSelect: (r: RiskAppetite) => void }) {
-  const opts: { value: RiskAppetite; label: string; desc: string; emoji: string }[] = [
-    { value: "low", label: "Low", desc: "Safety first — FDs, debt funds, stability", emoji: "🛡️" },
-    { value: "medium", label: "Medium", desc: "Balanced — mix of equity and debt", emoji: "⚖️" },
-    { value: "high", label: "High", desc: "Growth focused — equity, stocks, crypto", emoji: "🚀" },
+  const opts: { value: RiskAppetite; label: string; desc: string }[] = [
+    { value: "low", label: "Low", desc: "Safety first — FDs, debt funds, stability" },
+    { value: "medium", label: "Medium", desc: "Balanced — mix of equity and debt" },
+    { value: "high", label: "High", desc: "Growth focused — equity, stocks, crypto" },
   ];
   return (
     <div className="flex flex-col gap-2 animate-in slide-in-from-bottom-4 fade-in duration-300">
@@ -790,14 +981,11 @@ function StepRisk({ onSelect }: { onSelect: (r: RiskAppetite) => void }) {
           key={o.value}
           type="button"
           onClick={() => onSelect(o.value)}
-          className="nb-card py-4 px-4 text-left hover:bg-muted transition-colors flex items-center gap-4"
+          className="nb-card py-3 px-4 text-left hover:bg-muted transition-colors"
           style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}
         >
-          <span className="text-2xl">{o.emoji}</span>
-          <div>
-            <div className="font-bold text-sm capitalize">{o.label} Risk</div>
-            <div className="text-xs text-muted-foreground">{o.desc}</div>
-          </div>
+          <div className="font-bold text-sm capitalize">{o.label} Risk</div>
+          <div className="text-xs text-muted-foreground mt-0.5">{o.desc}</div>
         </button>
       ))}
     </div>
@@ -819,11 +1007,10 @@ function StepAgeRange({
             key={o.value}
             type="button"
             onClick={() => onSelect(o.value)}
-            className="nb-card py-3 px-3 text-left hover:bg-muted transition-colors flex items-center gap-2"
+            className="nb-card py-2.5 px-3 text-center hover:bg-muted transition-colors"
             style={{ boxShadow: "2px 2px 0px 0px hsl(var(--foreground))" }}
           >
-            <span>{o.emoji}</span>
-            <span className="text-xs font-bold">{o.label}</span>
+            <span className="text-sm font-bold">{o.label}</span>
           </button>
         ))}
       </div>
@@ -832,7 +1019,7 @@ function StepAgeRange({
         onClick={onSkip}
         className="w-full text-xs font-bold text-muted-foreground hover:text-foreground underline"
       >
-        Skip for now
+        Skip this question
       </button>
     </div>
   );
@@ -870,55 +1057,69 @@ function ExpandableStep({
   title,
   summary,
   ctaLabel = "Tap to answer",
+  skipLabel,
+  onSkip,
   children,
 }: {
   title: string;
   summary: string;
   ctaLabel?: string;
+  skipLabel?: string;
+  onSkip?: () => void;
   children: (close: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
 
   return (
-    <>
-      <div className="animate-in slide-in-from-bottom-4 fade-in duration-300">
+    <div className="space-y-2 animate-in slide-in-from-bottom-4 fade-in duration-300">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full text-left rounded-2xl rounded-tr-md border-2 border-foreground bg-primary/15 hover:bg-primary/25 transition-colors p-4 flex items-center justify-between gap-3 group"
+        style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}
+      >
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1.5">
+            Click to answer
+          </p>
+          <p className="text-sm font-black text-foreground">{title}</p>
+          <p className="text-xs font-medium text-muted-foreground mt-1 leading-snug">
+            {summary}
+          </p>
+          <p className="text-xs font-bold text-primary mt-2 inline-flex items-center gap-1 group-hover:gap-1.5 transition-all">
+            {ctaLabel} <ChevronRight className="w-3.5 h-3.5" />
+          </p>
+        </div>
+        <span className="shrink-0 w-10 h-10 rounded-xl bg-primary text-primary-foreground border-2 border-foreground flex items-center justify-center">
+          <Maximize2 className="w-4 h-4" />
+        </span>
+      </button>
+
+      {skipLabel && onSkip && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          className="w-full text-left rounded-2xl rounded-tr-md border-2 border-foreground bg-primary/15 hover:bg-primary/25 transition-colors p-4 flex items-center justify-between gap-3 group"
-          style={{ boxShadow: "3px 3px 0px 0px hsl(var(--foreground))" }}
+          onClick={onSkip}
+          className="w-full text-xs font-bold text-muted-foreground hover:text-foreground underline py-1"
         >
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest  text-sm text-primary md:text-base  mb-1.5 pl-[2.5rem] md:pl-[12.5rem] text-center">
-              Click to answer
-            </p>
-            <p className="text-sm font-black text-foreground">{title}</p>
-            <p className="text-xs font-medium text-muted-foreground mt-1 leading-snug">
-              {summary}
-            </p>
-            <p className="text-xs font-bold text-primary mt-2 inline-flex items-center gap-1 group-hover:gap-1.5 transition-all">
-              {ctaLabel} <ChevronRight className="w-3.5 h-3.5" />
-            </p>
-          </div>
-          <span className="shrink-0 w-10 h-10 rounded-xl bg-primary text-primary-foreground border-2 border-foreground flex items-center justify-center">
-            <Maximize2 className="w-4 h-4" />
-          </span>
+          {skipLabel}
         </button>
-      </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto border-2 border-foreground rounded-xl bg-card p-5 sm:p-6 shadow-[6px_6px_0px_0px_hsl(var(--foreground))]">
-          <DialogHeader className="text-left pr-6">
+        <DialogContent
+          className="w-[calc(100%-1.5rem)] max-w-lg max-h-[85vh] overflow-x-hidden overflow-y-auto border-2 border-foreground rounded-xl bg-card p-4 sm:p-6 shadow-[6px_6px_0px_0px_hsl(var(--foreground))] box-border"
+        >
+          <DialogHeader className="text-left pr-8">
             <DialogTitle className="font-black text-lg tracking-tight">{title}</DialogTitle>
             <DialogDescription className="text-xs font-medium">
               Fill this in to continue. Click outside to close without sending.
             </DialogDescription>
           </DialogHeader>
-          <div className="mt-1">{children(close)}</div>
+          <div className="mt-1 min-w-0 overflow-x-hidden">{children(close)}</div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
 
@@ -939,6 +1140,9 @@ export function FinancialChatOnboarding({ onDone }: Props) {
     savedDraft?.housingSituation ?? "rent"
   );
   const [form, setForm] = useState<FinancialData>(savedDraft?.form ?? { ...emptyFinancialData });
+  const [liquidCash, setLiquidCash] = useState(
+    savedDraft?.liquidCash ?? savedDraft?.form?.assets?.bankBalance ?? 0
+  );
   const [showResumeBanner, setShowResumeBanner] = useState(isResume);
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -992,8 +1196,8 @@ export function FinancialChatOnboarding({ onDone }: Props) {
   // Persist draft on every meaningful change
   const persistDraft = useCallback(() => {
     if (step === "done") return;
-    saveDraft({ step, history, cityTier, housingSituation, form });
-  }, [step, history, cityTier, housingSituation, form]);
+    saveDraft({ step, history, cityTier, housingSituation, form, liquidCash });
+  }, [step, history, cityTier, housingSituation, form, liquidCash]);
 
   useEffect(() => {
     persistDraft();
@@ -1005,19 +1209,21 @@ export function FinancialChatOnboarding({ onDone }: Props) {
   };
 
   const BOT_QUESTIONS: Record<Step, string> = {
-    income: `Hey ${name}!  Let's map your financial coordinates. What's your monthly take-home income?`,
-    city: "Great! Which city tier do you live in? This helps me estimate typical expense ratios.",
+    income: `Hey ${name}! Let's map your finances. What's your monthly take-home income?`,
+    city: "Which city tier do you live in? This helps estimate typical living costs.",
     housing: "How's your housing situation?",
     totalExpenses:
-      "Based on your income and city, here's an estimated monthly spend covering housing, food, transport, utilities, insurance, entertainment, healthcare, education, and other day-to-day costs. How close is this?",
+      "Here's an estimate of your day-to-day living costs (not loan EMIs or investments). Adjust if needed — next we'll split it by category.",
     expenseBreakdown:
-      "Here's how I've broken down those expenses. Adjust any category freely — 'Other' will auto-balance.",
-    savings: "Nice! How much do you have in your bank account / liquid savings right now?",
-    investments: "Do you have any investments? Select all that apply.",
-    debts: "Any outstanding loans or debt? Select all that apply.",
-    risk: "Almost there! What's your risk appetite for investments?",
+      "Here's a category breakdown with approximate amounts. Edit any field freely — including Other.",
+    savings:
+      "How much liquid cash do you have right now (savings / bank balance)? This is your emergency buffer.",
+    investments:
+      "What assets do you hold today? Enter their current total value — monthly SIP is optional after that.",
+    debts: "Any outstanding loans or debt? Select what applies (total owed, not EMI).",
+    risk: "Almost there — what's your risk appetite for investments?",
     ageRange:
-      "Optional: Which age range are you in? I use the median age of the range to estimate FI timeline (retirement age 60).",
+      "Optional: your age range. Used only to estimate FI timeline (retirement at 60).",
     done: "",
   };
 
@@ -1040,10 +1246,54 @@ export function FinancialChatOnboarding({ onDone }: Props) {
   }, []);
 
   const advance = (nextStep: Step, userText: string, botText?: string) => {
-    const entries: ChatEntry[] = [{ role: "user", text: userText }];
+    const answeredStep = step as AnswerableStep;
+    const entries: ChatEntry[] = [{ role: "user", text: userText, answeredStep }];
     if (botText) entries.push({ role: "bot", text: botText });
     pushHistory(entries);
     setStep(nextStep);
+  };
+
+  /** Jump back to a prior answer; drop that answer and everything after it. */
+  const handleEditAnswer = (answeredStep: AnswerableStep) => {
+    if (step === "done") return;
+    const idx = history.findIndex(
+      (e) => e.role === "user" && e.answeredStep === answeredStep
+    );
+    if (idx < 0) return;
+
+    setHistory((prev) => prev.slice(0, idx));
+    setStep(answeredStep);
+
+    // Keep liquid cash coherent if re-editing investments (customAssets cleared separately)
+    if (answeredStep === "investments" || answeredStep === "savings") {
+      setForm((prev) => ({
+        ...prev,
+        assets: {
+          ...prev.assets,
+          bankBalance: liquidCash,
+          ...(answeredStep === "investments"
+            ? { mutualFunds: 0, stocks: 0, gold: 0, realEstate: 0 }
+            : {}),
+        },
+        ...(answeredStep === "investments"
+          ? { monthlyInvestments: 0, customAssets: [] }
+          : {}),
+      }));
+    }
+    if (answeredStep === "debts") {
+      setForm((prev) => ({
+        ...prev,
+        liabilities: {
+          homeLoan: 0,
+          personalLoan: 0,
+          creditCardDebt: 0,
+          others: 0,
+        },
+        customLiabilities: [],
+      }));
+    }
+
+    setTimeout(() => scrollToBottom("smooth"), 50);
   };
 
   // ── Step handlers ──────────────────────────────────────────────────────────
@@ -1060,16 +1310,29 @@ export function FinancialChatOnboarding({ onDone }: Props) {
 
   const handleHousing = (sit: HousingSituation, label: string) => {
     setHousingSituation(sit);
-    const defaultTotal =
-      Math.round((form.monthlyIncome * DEFAULT_EXPENSE_RATIO[cityTier]) / 1000) * 1000;
-    const distributedExpenses = distributeExpenses(defaultTotal, cityTier, sit);
-    setForm((prev) => ({ ...prev, expenses: distributedExpenses }));
+    const defaultTotal = estimateMonthlyLivingExpenses({
+      monthlyIncome: form.monthlyIncome,
+      cityTier,
+      housingSituation: sit,
+    });
+    const distributedExpenses = distributeExpenses(
+      defaultTotal,
+      cityTier,
+      sit,
+      form.monthlyIncome
+    );
+    setForm((prev) => ({ ...prev, expenses: distributedExpenses, customExpenses: [] }));
     advance("totalExpenses", label, BOT_QUESTIONS.totalExpenses);
   };
 
   const handleTotalExpenses = (total: number) => {
-    const distributedExpenses = distributeExpenses(total, cityTier, housingSituation);
-    setForm((prev) => ({ ...prev, expenses: distributedExpenses }));
+    const distributedExpenses = distributeExpenses(
+      total,
+      cityTier,
+      housingSituation,
+      form.monthlyIncome
+    );
+    setForm((prev) => ({ ...prev, expenses: distributedExpenses, customExpenses: [] }));
     advance("expenseBreakdown", shortLabel(total) + "/month", BOT_QUESTIONS.expenseBreakdown);
   };
 
@@ -1079,15 +1342,28 @@ export function FinancialChatOnboarding({ onDone }: Props) {
     setStep("totalExpenses");
   };
 
-  const handleExpenseBreakdown = (expenses: Record<string, number>) => {
+  const handleExpenseBreakdown = (
+    expenses: Record<string, number>,
+    customItems: CustomItem[]
+  ) => {
     setForm((prev) => ({
       ...prev,
       expenses: expenses as unknown as typeof prev.expenses,
+      customExpenses: customItems.map(({ label, amount }) => ({
+        label: label.trim() || "Extra",
+        amount,
+      })),
     }));
-    advance("savings", "Breakdown confirmed ✓", BOT_QUESTIONS.savings);
+    const extras = customItems.filter((i) => i.amount > 0);
+    const confirmLabel =
+      extras.length > 0
+        ? `Breakdown confirmed ✓ (+${extras.length} extra)`
+        : "Breakdown confirmed ✓";
+    advance("savings", confirmLabel, BOT_QUESTIONS.savings);
   };
 
   const handleSavings = (val: number) => {
+    setLiquidCash(val);
     setForm((prev) => ({
       ...prev,
       assets: { ...prev.assets, bankBalance: val },
@@ -1101,14 +1377,20 @@ export function FinancialChatOnboarding({ onDone }: Props) {
 
   const handleInvestments = (
     assets: Partial<Record<string, number>>,
-    customTotal: number
+    customItems: CustomItem[],
+    monthlyInvestments: number
   ) => {
+    const customAssets = customItems.map(({ label, amount }) => ({
+      label: label.trim() || "Other",
+      amount,
+    }));
     setForm((prev) => ({
       ...prev,
+      monthlyInvestments,
+      customAssets,
       assets: {
         ...prev.assets,
-        // Add custom investments to bankBalance (catch-all for non-standard items)
-        bankBalance: prev.assets.bankBalance + customTotal,
+        bankBalance: liquidCash,
         mutualFunds: assets.mutualFunds ?? 0,
         stocks: assets.stocks ?? 0,
         gold: assets.gold ?? 0,
@@ -1119,17 +1401,27 @@ export function FinancialChatOnboarding({ onDone }: Props) {
       .map((k) => INVESTMENT_OPTIONS.find((o) => o.id === k)?.label)
       .filter(Boolean);
     const parts = [...standardLabels];
+    const customTotal = customAssets.reduce((s, i) => s + i.amount, 0);
     if (customTotal > 0) parts.push(`Other ${shortLabel(customTotal)}`);
+    if (monthlyInvestments > 0) parts.push(`${shortLabel(monthlyInvestments)}/mo SIP`);
     advance(
       "debts",
-      parts.length > 0 ? parts.join(", ") : "No investments",
+      parts.length > 0 ? parts.join(", ") : "No assets",
       BOT_QUESTIONS.debts
     );
   };
 
-  const handleDebts = (liabilities: Partial<Record<string, number>>) => {
+  const handleDebts = (
+    liabilities: Partial<Record<string, number>>,
+    customItems: CustomItem[]
+  ) => {
+    const customLiabilities = customItems.map(({ label, amount }) => ({
+      label: label.trim() || "Other loan",
+      amount,
+    }));
     setForm((prev) => ({
       ...prev,
+      customLiabilities,
       liabilities: {
         homeLoan: liabilities.homeLoan ?? 0,
         personalLoan: liabilities.personalLoan ?? 0,
@@ -1137,13 +1429,16 @@ export function FinancialChatOnboarding({ onDone }: Props) {
         others: liabilities.others ?? 0,
       },
     }));
-    const label =
-      Object.keys(liabilities).length > 0
-        ? Object.keys(liabilities)
-            .map((k) => LIABILITY_OPTIONS.find((o) => o.id === k)?.label ?? "Other loans")
-            .filter(Boolean)
-            .join(", ")
-        : "Debt-free 🎉";
+    const standardLabels = Object.keys(liabilities)
+      .map((k) => LIABILITY_OPTIONS.find((o) => o.id === k)?.label)
+      .filter(Boolean);
+    const parts = [...standardLabels];
+    if (customLiabilities.length > 0) {
+      parts.push(
+        ...customLiabilities.map((i) => i.label || "Other loans")
+      );
+    }
+    const label = parts.length > 0 ? parts.join(", ") : "Debt-free";
     advance("risk", label, BOT_QUESTIONS.risk);
   };
 
@@ -1151,19 +1446,19 @@ export function FinancialChatOnboarding({ onDone }: Props) {
     const updatedForm = { ...form, riskAppetite: r };
     setForm(updatedForm);
     const riskLabels: Record<RiskAppetite, string> = {
-      low: "🛡️ Low risk",
-      medium: "⚖️ Medium risk",
-      high: "🚀 High risk",
+      low: "Low risk",
+      medium: "Medium risk",
+      high: "High risk",
     };
     advance("ageRange", riskLabels[r], BOT_QUESTIONS.ageRange);
   };
 
   const finalizeOnboarding = (finalForm: FinancialData, userText: string) => {
     pushHistory([
-      { role: "user", text: userText },
+      { role: "user", text: userText, answeredStep: "ageRange" },
       {
         role: "bot",
-        text: "All systems go! Here's a summary of your data. Review it, then launch your financial insights 🚀",
+        text: "All set! Review your summary on the next screen — you can still fine-tune any number there.",
       },
     ]);
     setStep("done");
@@ -1184,6 +1479,17 @@ export function FinancialChatOnboarding({ onDone }: Props) {
     finalizeOnboarding(finalForm, "Skipped");
   };
 
+  const resetOnboarding = () => {
+    clearDraft();
+    setShowResumeBanner(false);
+    setStep("income");
+    setHistory([{ role: "bot", text: BOT_QUESTIONS.income }]);
+    setCityTier("metro");
+    setHousingSituation("rent");
+    setForm({ ...emptyFinancialData });
+    setLiquidCash(0);
+  };
+
   // ── Render current input ───────────────────────────────────────────────────
 
   const renderInput = () => {
@@ -1197,11 +1503,12 @@ export function FinancialChatOnboarding({ onDone }: Props) {
       case "totalExpenses":
         return (
           <StepTotalExpenses
-            defaultValue={
-              Math.round(
-                (form.monthlyIncome * DEFAULT_EXPENSE_RATIO[cityTier]) / 1000
-              ) * 1000
-            }
+            defaultValue={estimateMonthlyLivingExpenses({
+              monthlyIncome: form.monthlyIncome,
+              cityTier,
+              housingSituation,
+            })}
+            housingSituation={housingSituation}
             onNext={handleTotalExpenses}
           />
         );
@@ -1215,11 +1522,19 @@ export function FinancialChatOnboarding({ onDone }: Props) {
           >
             {(close) => (
               <StepExpenseBreakdown
+                key={`bd-${(form.customExpenses ?? [])
+                  .map((c) => `${c.label}:${c.amount}`)
+                  .join("|") || "empty"}`}
                 expenses={form.expenses as unknown as Record<string, number>}
-                total={expenseTotal}
-                onNext={(expenses) => {
+                initialCustom={(form.customExpenses ?? []).map((item, i) => ({
+                  id: `exp_${i}_${item.label}`,
+                  label: item.label,
+                  amount: item.amount,
+                }))}
+                housingSituation={housingSituation}
+                onNext={(expenses, customItems) => {
                   close();
-                  handleExpenseBreakdown(expenses);
+                  handleExpenseBreakdown(expenses, customItems);
                 }}
                 onEditTotal={() => {
                   close();
@@ -1235,15 +1550,17 @@ export function FinancialChatOnboarding({ onDone }: Props) {
       case "investments":
         return (
           <ExpandableStep
-            title="Investments"
-            summary="Mutual funds, stocks, gold, real estate & more — select what you have"
-            ctaLabel="Open investments to answer"
+            title="Assets"
+            summary="Current holdings (total value) — monthly SIP optional"
+            ctaLabel="Open assets to answer"
+            skipLabel="No assets"
+            onSkip={() => handleInvestments({}, [], 0)}
           >
             {(close) => (
               <StepInvestments
-                onNext={(assets, customTotal) => {
+                onNext={(assets, customItems, monthlyInvestments) => {
                   close();
-                  handleInvestments(assets, customTotal);
+                  handleInvestments(assets, customItems, monthlyInvestments);
                 }}
               />
             )}
@@ -1255,12 +1572,14 @@ export function FinancialChatOnboarding({ onDone }: Props) {
             title="Loans & debt"
             summary="Home loan, personal loan, credit cards & other — add what applies"
             ctaLabel="Open loans to answer"
+            skipLabel="No loans"
+            onSkip={() => handleDebts({}, [])}
           >
             {(close) => (
               <StepDebts
-                onNext={(liabilities) => {
+                onNext={(liabilities, customItems) => {
                   close();
-                  handleDebts(liabilities);
+                  handleDebts(liabilities, customItems);
                 }}
               />
             )}
@@ -1269,7 +1588,28 @@ export function FinancialChatOnboarding({ onDone }: Props) {
       case "risk":
         return <StepRisk onSelect={handleRisk} />;
       case "ageRange":
-        return <StepAgeRange onSelect={handleAgeRange} onSkip={handleSkipAgeRange} />;
+        return (
+          <ExpandableStep
+            title="Age range"
+            summary="Optional — used for FI timeline estimate"
+            ctaLabel="Choose age range"
+            skipLabel="Skip this question"
+            onSkip={handleSkipAgeRange}
+          >
+            {(close) => (
+              <StepAgeRange
+                onSelect={(range) => {
+                  close();
+                  handleAgeRange(range);
+                }}
+                onSkip={() => {
+                  close();
+                  handleSkipAgeRange();
+                }}
+              />
+            )}
+          </ExpandableStep>
+        );
       case "done":
         return (
           <div className="flex items-center gap-2 text-accent text-sm font-bold animate-in fade-in">
@@ -1281,24 +1621,26 @@ export function FinancialChatOnboarding({ onDone }: Props) {
 
   return (
     <div className="w-full max-w-xl mx-auto h-full flex flex-col gap-4 min-h-0">
-      {/* Resume banner */}
-      {showResumeBanner && (
-        <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-3 rounded-lg border-2 border-accent/50 bg-accent/10 animate-in slide-in-from-top-2 fade-in">
-          <p className="text-xs font-bold text-accent">
-            Resuming where you left off
+      {/* Resume / start-over bar — always available while filling the form */}
+      {step !== "done" && (
+        <div
+          className={`shrink-0 flex items-center justify-between gap-3 px-4 py-3 rounded-lg border-2 animate-in slide-in-from-top-2 fade-in ${
+            showResumeBanner
+              ? "border-accent/50 bg-accent/10"
+              : "border-foreground/15 bg-muted/30"
+          }`}
+        >
+          <p
+            className={`text-xs font-bold ${
+              showResumeBanner ? "text-accent" : "text-muted-foreground"
+            }`}
+          >
+            {showResumeBanner ? "Resuming where you left off" : "Want a fresh start?"}
           </p>
           <button
             type="button"
-            onClick={() => {
-              clearDraft();
-              setShowResumeBanner(false);
-              setStep("income");
-              setHistory([{ role: "bot", text: BOT_QUESTIONS.income }]);
-              setCityTier("metro");
-              setHousingSituation("rent");
-              setForm({ ...emptyFinancialData });
-            }}
-            className="text-[10px] font-bold text-muted-foreground underline hover:text-foreground"
+            onClick={resetOnboarding}
+            className="text-[10px] font-bold text-muted-foreground underline hover:text-foreground shrink-0"
           >
             Start over
           </button>
@@ -1333,7 +1675,15 @@ export function FinancialChatOnboarding({ onDone }: Props) {
             entry.role === "bot" ? (
               <BotBubble key={i} text={entry.text} />
             ) : (
-              <UserBubble key={i} text={entry.text} />
+              <UserBubble
+                key={i}
+                text={entry.text}
+                onEdit={
+                  step !== "done" && entry.answeredStep
+                    ? () => handleEditAnswer(entry.answeredStep!)
+                    : undefined
+                }
+              />
             )
           )}
           <div ref={bottomRef} />
@@ -1356,7 +1706,10 @@ export function FinancialChatOnboarding({ onDone }: Props) {
       {/* Current input / answer area — expandable steps already look like a reply */}
       {(() => {
         const isFormAnswer =
-          step === "expenseBreakdown" || step === "investments" || step === "debts";
+          step === "expenseBreakdown" ||
+          step === "investments" ||
+          step === "debts" ||
+          step === "ageRange";
         return (
           <div
             className={isFormAnswer ? "shrink-0" : "shrink-0 nb-card"}

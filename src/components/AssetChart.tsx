@@ -1,9 +1,10 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { formatCurrency } from "@/lib/financial-engine";
-import type { Assets } from "@/types/finance";
+import type { Assets, CustomMoneyItem } from "@/types/finance";
 
 interface AssetChartProps {
   assets: Assets;
+  customAssets?: CustomMoneyItem[];
 }
 
 const COLORS = [
@@ -11,7 +12,8 @@ const COLORS = [
   "hsl(var(--primary))",
   "hsl(var(--secondary))",
   "hsl(var(--destructive))",
-  "hsl(200, 80%, 55%)"
+  "hsl(200, 80%, 55%)",
+  "hsl(40, 80%, 50%)",
 ];
 const LABELS: Record<keyof Assets, string> = {
   bankBalance: "Bank",
@@ -21,10 +23,15 @@ const LABELS: Record<keyof Assets, string> = {
   realEstate: "Real Estate",
 };
 
-export function AssetChart({ assets }: AssetChartProps) {
+export function AssetChart({ assets, customAssets = [] }: AssetChartProps) {
   const data = (Object.entries(assets) as [keyof Assets, number][])
     .filter(([, v]) => v > 0)
     .map(([key, value]) => ({ name: LABELS[key], value }));
+
+  const otherTotal = customAssets.reduce((s, i) => s + (i.amount || 0), 0);
+  if (otherTotal > 0) {
+    data.push({ name: "Other", value: otherTotal });
+  }
 
   if (data.length === 0) {
     return (
